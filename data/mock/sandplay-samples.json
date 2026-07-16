@@ -1,0 +1,172 @@
+{
+  "datasetName": "沙盘布局模拟样本",
+  "datasetVersion": "1.0.0",
+  "dataCompliance": "synthetic",
+  "description": "人工构造的沙盘布局样本，覆盖不同密度、分布模式和主题场景。零真实学生数据。",
+  "generatedBy": "manual-craft",
+  "createdAt": "2024-07-16",
+  "samples": [
+    {
+      "sampleId": "sample-001",
+      "label": "稀疏布局 - 单个中心人物",
+      "density": "sparse",
+      "userDescription": "只有我一个人站在中间",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "person-adult-male", "category": "人物", "x": 400, "y": 300, "rotation": 0, "scale": 1.0, "zIndex": 0 }
+      ]
+    },
+    {
+      "sampleId": "sample-002",
+      "label": "自然风景场景",
+      "density": "medium",
+      "userDescription": "一个宁静的自然场景，有山有水有树",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "nature-mountain", "category": "自然", "x": 600, "y": 200, "rotation": 0, "scale": 1.5, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "nature-sun", "category": "自然", "x": 700, "y": 80, "rotation": 0, "scale": 0.8, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "nature-lake", "category": "自然", "x": 200, "y": 450, "rotation": 0, "scale": 1.2, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "plant-tree-oak", "category": "植物", "x": 150, "y": 250, "rotation": 0, "scale": 1.0, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "plant-tree-pine", "category": "植物", "x": 350, "y": 180, "rotation": 0, "scale": 0.9, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "plant-grass", "category": "植物", "x": 400, "y": 500, "rotation": 0, "scale": 1.5, "zIndex": 5 }
+      ]
+    },
+    {
+      "sampleId": "sample-003",
+      "label": "家庭场景 - 房子和人物",
+      "density": "medium",
+      "userDescription": "这是我理想中的家，爸爸妈妈和我在一起",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "building-house", "category": "建筑", "x": 350, "y": 250, "rotation": 0, "scale": 1.3, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "person-adult-male", "category": "人物", "x": 250, "y": 400, "rotation": 0, "scale": 1.0, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "person-adult-female", "category": "人物", "x": 320, "y": 400, "rotation": 0, "scale": 1.0, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "person-child", "category": "人物", "x": 380, "y": 420, "rotation": 0, "scale": 0.7, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "plant-tree-oak", "category": "植物", "x": 550, "y": 300, "rotation": 0, "scale": 1.1, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "nature-sun", "category": "自然", "x": 600, "y": 60, "rotation": 0, "scale": 0.7, "zIndex": 5 },
+        { "instanceId": "inst-007", "elementId": "building-fence", "category": "建筑", "x": 150, "y": 380, "rotation": 90, "scale": 1.0, "zIndex": 6 }
+      ]
+    },
+    {
+      "sampleId": "sample-004",
+      "label": "密集布局 - 左上聚类",
+      "density": "dense",
+      "userDescription": "所有重要的东西都堆在一边",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "building-house", "category": "建筑", "x": 120, "y": 150, "rotation": 0, "scale": 0.9, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "plant-tree-oak", "category": "植物", "x": 180, "y": 130, "rotation": 0, "scale": 0.8, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "person-adult-male", "category": "人物", "x": 100, "y": 100, "rotation": 0, "scale": 0.7, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "animal-dog", "category": "动物", "x": 150, "y": 90, "rotation": 0, "scale": 0.5, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "building-fence", "category": "建筑", "x": 80, "y": 200, "rotation": 90, "scale": 0.8, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "plant-flower", "category": "植物", "x": 200, "y": 80, "rotation": 0, "scale": 0.6, "zIndex": 5 },
+        { "instanceId": "inst-007", "elementId": "abstract-star", "category": "抽象符号", "x": 130, "y": 60, "rotation": 0, "scale": 0.5, "zIndex": 6 },
+        { "instanceId": "inst-008", "elementId": "nature-cloud", "category": "自然", "x": 90, "y": 50, "rotation": 0, "scale": 0.7, "zIndex": 7 },
+        { "instanceId": "inst-009", "elementId": "abstract-heart", "category": "抽象符号", "x": 170, "y": 170, "rotation": 0, "scale": 0.6, "zIndex": 8 },
+        { "instanceId": "inst-010", "elementId": "plant-bush", "category": "植物", "x": 140, "y": 180, "rotation": 0, "scale": 0.5, "zIndex": 9 }
+      ]
+    },
+    {
+      "sampleId": "sample-005",
+      "label": "对称分布 - 平衡场景",
+      "density": "medium",
+      "userDescription": "我觉得平衡很重要，东西应该左右对称",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "person-adult-male", "category": "人物", "x": 400, "y": 300, "rotation": 0, "scale": 1.0, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "plant-tree-oak", "category": "植物", "x": 200, "y": 250, "rotation": 0, "scale": 1.0, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "plant-tree-pine", "category": "植物", "x": 600, "y": 250, "rotation": 0, "scale": 1.0, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "nature-sun", "category": "自然", "x": 200, "y": 80, "rotation": 0, "scale": 0.8, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "nature-moon", "category": "自然", "x": 600, "y": 80, "rotation": 0, "scale": 0.8, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "plant-flower", "category": "植物", "x": 250, "y": 480, "rotation": 0, "scale": 0.7, "zIndex": 5 },
+        { "instanceId": "inst-007", "elementId": "plant-flower", "category": "植物", "x": 550, "y": 480, "rotation": 0, "scale": 0.7, "zIndex": 6 }
+      ]
+    },
+    {
+      "sampleId": "sample-006",
+      "label": "边界测试 - 元素在画布边缘",
+      "density": "sparse",
+      "userDescription": "感觉世界只在边缘",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "person-adult-female", "category": "人物", "x": 10, "y": 300, "rotation": 0, "scale": 1.0, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "building-house", "category": "建筑", "x": 790, "y": 500, "rotation": 0, "scale": 0.8, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "plant-tree-oak", "category": "植物", "x": 400, "y": 10, "rotation": 0, "scale": 0.9, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "nature-rock", "category": "自然", "x": 400, "y": 590, "rotation": 0, "scale": 0.6, "zIndex": 3 }
+      ]
+    },
+    {
+      "sampleId": "sample-007",
+      "label": "校园社交场景",
+      "density": "dense",
+      "userDescription": "校园生活，周围很多人但感觉很孤独",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "building-school", "category": "建筑", "x": 300, "y": 200, "rotation": 0, "scale": 1.5, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "person-group", "category": "人物", "x": 200, "y": 400, "rotation": 0, "scale": 1.0, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "person-adult-male", "category": "人物", "x": 500, "y": 420, "rotation": 0, "scale": 0.6, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "person-adult-female", "category": "人物", "x": 530, "y": 410, "rotation": 0, "scale": 0.6, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "person-child", "category": "人物", "x": 560, "y": 430, "rotation": 0, "scale": 0.5, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "person-child", "category": "人物", "x": 480, "y": 440, "rotation": 0, "scale": 0.5, "zIndex": 5 },
+        { "instanceId": "inst-007", "elementId": "plant-tree-pine", "category": "植物", "x": 100, "y": 350, "rotation": 0, "scale": 1.0, "zIndex": 6 },
+        { "instanceId": "inst-008", "elementId": "plant-tree-pine", "category": "植物", "x": 700, "y": 350, "rotation": 0, "scale": 1.0, "zIndex": 7 },
+        { "instanceId": "inst-009", "elementId": "vehicle-bicycle", "category": "交通工具", "x": 600, "y": 500, "rotation": 0, "scale": 0.7, "zIndex": 8 },
+        { "instanceId": "inst-010", "elementId": "abstract-flag", "category": "抽象符号", "x": 400, "y": 50, "rotation": 0, "scale": 0.8, "zIndex": 9 }
+      ]
+    },
+    {
+      "sampleId": "sample-008",
+      "label": "四分法布局 - 元素均匀分散",
+      "density": "medium",
+      "userDescription": "四个角落各放一些东西",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "nature-sun", "category": "自然", "x": 100, "y": 100, "rotation": 0, "scale": 0.8, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "nature-moon", "category": "自然", "x": 700, "y": 100, "rotation": 0, "scale": 0.8, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "building-house", "category": "建筑", "x": 100, "y": 500, "rotation": 0, "scale": 0.9, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "plant-tree-oak", "category": "植物", "x": 700, "y": 500, "rotation": 0, "scale": 1.0, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "person-adult-male", "category": "人物", "x": 400, "y": 300, "rotation": 0, "scale": 0.8, "zIndex": 4 }
+      ]
+    },
+    {
+      "sampleId": "sample-009",
+      "label": "交通工具主题",
+      "density": "medium",
+      "userDescription": "想去远方旅行",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "vehicle-car", "category": "交通工具", "x": 400, "y": 350, "rotation": 0, "scale": 1.0, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "vehicle-boat", "category": "交通工具", "x": 200, "y": 450, "rotation": 0, "scale": 0.9, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "vehicle-airplane", "category": "交通工具", "x": 600, "y": 100, "rotation": 15, "scale": 0.8, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "person-adult-male", "category": "人物", "x": 400, "y": 300, "rotation": 0, "scale": 1.0, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "nature-mountain", "category": "自然", "x": 700, "y": 200, "rotation": 0, "scale": 1.2, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "nature-cloud", "category": "自然", "x": 350, "y": 60, "rotation": 0, "scale": 0.8, "zIndex": 5 }
+      ]
+    },
+    {
+      "sampleId": "sample-010",
+      "label": "空画布但写了描述",
+      "density": "empty",
+      "userDescription": "我不想放任何东西，心里太空了，什么都放不下。",
+      "elements": []
+    },
+    {
+      "sampleId": "sample-011",
+      "label": "抽象符号为主",
+      "density": "medium",
+      "userDescription": "用符号表达情绪",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "abstract-heart", "category": "抽象符号", "x": 300, "y": 200, "rotation": 0, "scale": 2.0, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "abstract-star", "category": "抽象符号", "x": 500, "y": 150, "rotation": 0, "scale": 1.5, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "abstract-cross", "category": "抽象符号", "x": 400, "y": 400, "rotation": 45, "scale": 1.0, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "abstract-circle", "category": "抽象符号", "x": 200, "y": 350, "rotation": 0, "scale": 1.8, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "abstract-flag", "category": "抽象符号", "x": 600, "y": 350, "rotation": 0, "scale": 1.0, "zIndex": 4 }
+      ]
+    },
+    {
+      "sampleId": "sample-012",
+      "label": "人与动物互动场景",
+      "density": "medium",
+      "userDescription": "我和我的宠物在公园",
+      "elements": [
+        { "instanceId": "inst-001", "elementId": "person-adult-female", "category": "人物", "x": 350, "y": 350, "rotation": 0, "scale": 1.0, "zIndex": 0 },
+        { "instanceId": "inst-002", "elementId": "animal-dog", "category": "动物", "x": 280, "y": 380, "rotation": 0, "scale": 0.6, "zIndex": 1 },
+        { "instanceId": "inst-003", "elementId": "animal-cat", "category": "动物", "x": 420, "y": 400, "rotation": 0, "scale": 0.5, "zIndex": 2 },
+        { "instanceId": "inst-004", "elementId": "animal-bird", "category": "动物", "x": 500, "y": 100, "rotation": 0, "scale": 0.4, "zIndex": 3 },
+        { "instanceId": "inst-005", "elementId": "plant-grass", "category": "植物", "x": 400, "y": 500, "rotation": 0, "scale": 1.5, "zIndex": 4 },
+        { "instanceId": "inst-006", "elementId": "plant-flower", "category": "植物", "x": 200, "y": 480, "rotation": 0, "scale": 0.8, "zIndex": 5 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "get_rag_context",
+  "description": "检索RAG知识库——根据主题和查询文本检索相关心理教育背景资料",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "const": "get_rag_context"
+    },
+    "parameters": {
+      "type": "object",
+      "required": ["topic", "query"],
+      "properties": {
+        "topic": {
+          "type": "string",
+          "enum": ["sandplay", "htp", "general-psychology"],
+          "description": "知识域主题过滤"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "语义检索查询文本"
+        },
+        "maxResults": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        },
+        "riskLabel": {
+          "type": "string",
+          "enum": ["safe", "caution", "restricted"],
+          "default": "safe",
+          "description": "风险标签过滤——默认仅返回safe级别文档"
+        }
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "documents": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "docId": { "type": "string" },
+            "title": { "type": "string" },
+            "snippet": { "type": "string" },
+            "source": { "type": "string" },
+            "riskLabel": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        }
+      },
+      "totalFound": { "type": "integer" }
+    }
+  },
+  "permission": {
+    "level": "read",
+    "scope": "public-knowledge-base"
+  },
+  "reliability": {
+    "timeout": 3000,
+    "maxRetries": 2
+  },
+  "errorFallback": {
+    "notFound": "未找到相关知识内容，将基于通用知识回答并建议专业求助。",
+    "timeout": "知识检索超时，将在没有背景资料的情况下继续分析。"
+  }
+}

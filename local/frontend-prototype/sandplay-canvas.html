@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>沙盘画布 - 心迹AI (本地原型)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; background: #f5f0e8; display: flex; height: 100vh; }
+/* 左侧元素库 */
+.sidebar { width: 240px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+.sidebar h3 { padding: 16px; border-bottom: 1px solid #eee; font-size: 14px; }
+.category-tabs { display: flex; flex-wrap: wrap; padding: 8px; gap: 4px; }
+.cat-tab { padding: 4px 10px; border: 1px solid #ddd; border-radius: 14px; cursor: pointer; font-size: 12px; background: #fff; }
+.cat-tab.active { background: #4A90D9; color: #fff; border-color: #4A90D9; }
+.element-grid { flex: 1; overflow-y: auto; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.elem-item { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border: 1px solid #eee; border-radius: 8px; cursor: grab; font-size: 11px; text-align: center; }
+.elem-item:hover { background: #f0f4ff; border-color: #4A90D9; }
+.elem-item .icon { width: 32px; height: 32px; margin-bottom: 4px; }
+/* 主画布区 */
+.main { flex: 1; display: flex; flex-direction: column; }
+.toolbar { display: flex; gap: 8px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+.toolbar button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+.toolbar button:hover { background: #f0f0f0; }
+.toolbar button.primary { background: #4A90D9; color: #fff; border-color: #4A90D9; }
+.canvas-container { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
+canvas { border: 2px solid #d4c5a9; border-radius: 4px; background: #faf6ef; box-shadow: 0 2px 12px rgba(0,0,0,0.1); cursor: crosshair; }
+/* 底部描述区 */
+.description-bar { display: flex; gap: 12px; padding: 12px 16px; background: #fff; border-top: 1px solid #ddd; align-items: center; }
+.description-bar textarea { flex: 1; height: 48px; border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; font-size: 13px; resize: none; }
+.description-bar textarea::placeholder { color: #aaa; }
+/* 加载遮罩 */
+.loading-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.8); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
+.loading-overlay.show { display: flex; }
+.spinner { width: 40px; height: 40px; border: 3px solid #eee; border-top-color: #4A90D9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<!-- 元素库 -->
+<div class="sidebar">
+  <h3>🎨 沙盘元素库</h3>
+  <div class="category-tabs" id="categoryTabs">
+    <button class="cat-tab active" data-cat="all">全部</button>
+    <button class="cat-tab" data-cat="人物">人物</button>
+    <button class="cat-tab" data-cat="动物">动物</button>
+    <button class="cat-tab" data-cat="建筑">建筑</button>
+    <button class="cat-tab" data-cat="植物">植物</button>
+    <button class="cat-tab" data-cat="自然">自然</button>
+    <button class="cat-tab" data-cat="交通工具">交通</button>
+    <button class="cat-tab" data-cat="抽象符号">符号</button>
+  </div>
+  <div class="element-grid" id="elementGrid"></div>
+</div>
+<!-- 主区域 -->
+<div class="main">
+  <div class="toolbar">
+    <button onclick="undo()">↩ 撤销</button>
+    <button onclick="redo()">↪ 重做</button>
+    <button onclick="clearCanvas()">🗑 清空</button>
+    <span style="flex:1"></span>
+    <button onclick="toggleGrid()">📐 网格</button>
+    <button class="primary" onclick="saveAndAnalyze()">💾 保存并分析</button>
+  </div>
+  <div class="canvas-container">
+    <canvas id="sandCanvas" width="800" height="600"></canvas>
+  </div>
+  <div class="description-bar">
+    <span style="font-size:13px;color:#666">📝</span>
+    <textarea id="descInput" maxlength="500" placeholder="描述你的沙盘作品（可选，最多500字）..."></textarea>
+    <span id="charCount" style="font-size:11px;color:#aaa">0/500</span>
+  </div>
+</div>
+<!-- 加载遮罩 -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p style="margin-top:16px;color:#666">正在分析沙盘...</p>
+</div>
+
+<script>
+// ===== 画布状态管理 =====
+const canvas = document.getElementById('sandCanvas');
+const ctx = canvas.getContext('2d');
+let elements = [];
+let history = [];     // 撤销栈
+let future = [];      // 重做栈
+let showGrid = false;
+let selectedElem = null;
+let dragMode = null;  // 'move' | 'rotate' | 'scale'
+let dragStart = null;
+
+// ===== 元素库（简化版，实际从 sandplay-elements.json 加载）=====
+const elementDefs = [
+  {id:'person-adult-male',cat:'人物',label:'成年男性',color:'#4A90D9'},
+  {id:'person-adult-female',cat:'人物',label:'成年女性',color:'#4A90D9'},
+  {id:'person-child',cat:'人物',label:'小孩',color:'#4A90D9'},
+  {id:'animal-dog',cat:'动物',label:'狗',color:'#E8A838'},
+  {id:'animal-cat',cat:'动物',label:'猫',color:'#E8A838'},
+  {id:'animal-bird',cat:'动物',label:'鸟',color:'#E8A838'},
+  {id:'building-house',cat:'建筑',label:'房子',color:'#8B7355'},
+  {id:'building-school',cat:'建筑',label:'学校',color:'#8B7355'},
+  {id:'plant-tree-oak',cat:'植物',label:'橡树',color:'#5B9A3B'},
+  {id:'plant-tree-pine',cat:'植物',label:'松树',color:'#5B9A3B'},
+  {id:'plant-flower',cat:'植物',label:'花',color:'#5B9A3B'},
+  {id:'plant-grass',cat:'植物',label:'草地',color:'#5B9A3B'},
+  {id:'nature-sun',cat:'自然',label:'太阳',color:'#4ECDC4'},
+  {id:'nature-moon',cat:'自然',label:'月亮',color:'#4ECDC4'},
+  {id:'nature-cloud',cat:'自然',label:'云',color:'#4ECDC4'},
+  {id:'nature-mountain',cat:'自然',label:'山',color:'#4ECDC4'},
+  {id:'nature-river',cat:'自然',label:'河流',color:'#4ECDC4'},
+  {id:'vehicle-car',cat:'交通工具',label:'汽车',color:'#E85D75'},
+  {id:'vehicle-bicycle',cat:'交通工具',label:'自行车',color:'#E85D75'},
+  {id:'abstract-star',cat:'抽象符号',label:'星星',color:'#9B59B6'},
+  {id:'abstract-heart',cat:'抽象符号',label:'爱心',color:'#9B59B6'},
+  {id:'abstract-circle',cat:'抽象符号',label:'圆圈',color:'#9B59B6'},
+];
+
+// ===== 绘制函数 =====
+function drawAll() {
+  ctx.clearRect(0, 0, 800, 600);
+  if (showGrid) drawGrid();
+  elements.forEach(drawElement);
+}
+
+function drawGrid() {
+  ctx.strokeStyle = '#e8e0d0';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= 800; x += 50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,600); ctx.stroke(); }
+  for (let y = 0; y <= 600; y += 50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(800,y); ctx.stroke(); }
+  // 中心十字
+  ctx.strokeStyle = '#d4c5a9';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(400,0); ctx.lineTo(400,600); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,300); ctx.lineTo(800,300); ctx.stroke();
+}
+
+function drawElement(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.rotation * Math.PI / 180);
+  ctx.scale(e.scale, e.scale);
+  const def = elementDefs.find(d => d.id === e.elementId) || {};
+  const color = def.color || '#888';
+  // 简化的元素绘制
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#333';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(def.label || e.elementId, 0, 28);
+  // 选中高亮
+  if (selectedElem === e) {
+    ctx.strokeStyle = '#4A90D9';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ===== 元素库渲染 =====
+function renderElementLibrary(filter) {
+  const grid = document.getElementById('elementGrid');
+  grid.innerHTML = '';
+  elementDefs.filter(d => !filter || filter === 'all' || d.cat === filter)
+    .forEach(def => {
+      const div = document.createElement('div');
+      div.className = 'elem-item';
+      div.draggable = true;
+      div.innerHTML = `<div class="icon" style="background:${def.color};border-radius:50%"></div><span>${def.label}</span>`;
+      div.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', def.id);
+      });
+      grid.appendChild(div);
+    });
+}
+
+// ===== 画布交互 =====
+canvas.addEventListener('dragover', e => { e.preventDefault(); });
+canvas.addEventListener('drop', e => {
+  e.preventDefault();
+  const elemId = e.dataTransfer.getData('text/plain');
+  const def = elementDefs.find(d => d.id === elemId);
+  if (!def) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  saveHistory();
+  elements.push({
+    instanceId: 'inst-' + Date.now(),
+    elementId: def.id,
+    category: def.cat,
+    x, y, rotation: 0, scale: 1, zIndex: elements.length
+  });
+  future = [];
+  drawAll();
+});
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  // 反向遍历（选中最上层元素）
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    const dist = Math.hypot(mx - el.x, my - el.y);
+    if (dist < 20) {
+      selectedElem = el;
+      dragMode = 'move';
+      dragStart = {mx, my, ox: el.x, oy: el.y, rotation: el.rotation, scale: el.scale};
+      drawAll();
+      return;
+    }
+  }
+  selectedElem = null;
+  drawAll();
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!selectedElem || !dragMode || !dragStart) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  if (dragMode === 'move') {
+    selectedElem.x = Math.max(0, Math.min(800, dragStart.ox + (mx - dragStart.mx)));
+    selectedElem.y = Math.max(0, Math.min(600, dragStart.oy + (my - dragStart.my)));
+  }
+  drawAll();
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (selectedElem && dragStart) {
+    if (selectedElem.x !== dragStart.ox || selectedElem.y !== dragStart.oy) {
+      saveHistory();
+      future = [];
+    }
+  }
+  dragMode = null;
+  dragStart = null;
+});
+
+// ===== 操作按钮 =====
+function saveHistory() { history.push(JSON.parse(JSON.stringify(elements))); if (history.length > 50) history.shift(); }
+function undo() { if (history.length === 0) return; future.push(JSON.parse(JSON.stringify(elements))); elements = history.pop(); selectedElem = null; drawAll(); }
+function redo() { if (future.length === 0) return; history.push(JSON.parse(JSON.stringify(elements))); elements = future.pop(); drawAll(); }
+function clearCanvas() { if (!confirm('确定要清空画布吗？')) return; saveHistory(); elements = []; future = []; selectedElem = null; drawAll(); }
+function toggleGrid() { showGrid = !showGrid; drawAll(); }
+
+// ===== 序列化与保存 =====
+function serializeLayout() {
+  return {
+    elements: elements.map(e => ({
+      instanceId: e.instanceId, elementId: e.elementId, category: e.category,
+      x: Math.round(e.x * 10) / 10, y: Math.round(e.y * 10) / 10,
+      rotation: Math.round(e.rotation * 10) / 10, scale: Math.round(e.scale * 10) / 10, zIndex: e.zIndex
+    })),
+    userDescription: document.getElementById('descInput').value.trim()
+  };
+}
+
+async function saveAndAnalyze() {
+  const data = serializeLayout();
+  if (data.elements.length === 0 && !data.userDescription) {
+    alert('请至少放置一个元素或填写文字描述');
+    return;
+  }
+  document.getElementById('loadingOverlay').classList.add('show');
+  // 模拟API调用 — 实际使用时替换为 POST /api/v1/sandplay/analyze
+  console.log('Sending to API:', JSON.stringify(data, null, 2));
+  await new Promise(r => setTimeout(r, 1500));
+  document.getElementById('loadingOverlay').classList.remove('show');
+  alert('沙盘分析完成（本地原型 — API尚未连接）\n\n请在控制台查看提交的数据');
+}
+
+// ===== 初始化和事件绑定 =====
+document.querySelectorAll('.cat-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderElementLibrary(btn.dataset.cat);
+  });
+});
+document.getElementById('descInput').addEventListener('input', e => {
+  document.getElementById('charCount').textContent = e.target.value.length + '/500';
+});
+
+renderElementLibrary('all');
+drawAll();
+console.log('沙盘Canvas原型已就绪 — 心迹AI 角色B');
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+# 心迹AI - 多模态分析统一错误码
+# 角色B维护：沙盘分析、房树人分析、Agent调用、多模态模型相关错误
+# 错误码格式: MODULE_CATEGORY_REASON（全大写，下划线分隔）
+
+errors:
+  # ============================================================
+  # 沙盘分析错误 (SANDBOX_*)
+  # ============================================================
+  - code: "SANDBOX_INVALID_INPUT"
+    httpStatus: 400
+    message: "沙盘输入数据验证失败"
+    userAction: "请检查元素坐标、类别等字段是否正确填写"
+    module: "sandplay"
+
+  - code: "SANDBOX_EMPTY_CANVAS"
+    httpStatus: 422
+    message: "画布为空，请至少放置一个元素或填写文字描述"
+    userAction: "请在画布上添加至少一个沙盘元素，或输入文字描述"
+    module: "sandplay"
+
+  - code: "SANDBOX_COORDINATE_OUT_OF_RANGE"
+    httpStatus: 400
+    message: "元素坐标超出画布有效范围（X: 0-800, Y: 0-600）"
+    userAction: "请将元素放置在画布有效区域内"
+    module: "sandplay"
+
+  - code: "SANDBOX_INVALID_CATEGORY"
+    httpStatus: 400
+    message: "元素类别不在预定义列表中"
+    userAction: "请从元素库中选择有效类别的元素"
+    module: "sandplay"
+
+  - code: "SANDBOX_TOO_MANY_ELEMENTS"
+    httpStatus: 400
+    message: "画布元素数量超过上限（最多200个）"
+    userAction: "请减少画布上的元素数量"
+    module: "sandplay"
+
+  - code: "SANDBOX_ANALYSIS_FAILED"
+    httpStatus: 500
+    message: "沙盘分析过程发生内部错误"
+    userAction: "请稍后重试，如持续失败请联系管理员"
+    module: "sandplay"
+
+  # ============================================================
+  # 房树人分析错误 (HTP_*)
+  # ============================================================
+  - code: "HTP_IMAGE_NOT_FOUND"
+    httpStatus: 404
+    message: "画作图片引用不存在"
+    userAction: "请重新上传画作图片"
+    module: "htp"
+
+  - code: "HTP_IMAGE_INVALID_FORMAT"
+    httpStatus: 400
+    message: "画作图片格式不支持（仅支持 PNG 和 JPEG）"
+    userAction: "请上传 PNG 或 JPEG 格式的图片"
+    module: "htp"
+
+  - code: "HTP_IMAGE_TOO_LARGE"
+    httpStatus: 400
+    message: "画作图片文件过大（最大 10MB）"
+    userAction: "请压缩图片后重新上传"
+    module: "htp"
+
+  - code: "HTP_QUESTIONNAIRE_INCOMPLETE"
+    httpStatus: 400
+    message: "问卷必填项未完成（绘制顺序和完整度自评为必填）"
+    userAction: "请完成所有必填问题后重新提交"
+    module: "htp"
+
+  - code: "HTP_ANALYSIS_FAILED"
+    httpStatus: 500
+    message: "房树人分析过程发生内部错误"
+    userAction: "请稍后重试，如持续失败请联系管理员"
+    module: "htp"
+
+  # ============================================================
+  # 多模态模型错误 (MULTIMODAL_*)
+  # ============================================================
+  - code: "MULTIMODAL_TIMEOUT"
+    httpStatus: 504
+    message: "多模态模型调用超时"
+    userAction: "图像分析暂时不可用，将基于问卷信息继续分析"
+    module: "multimodal"
+
+  - code: "MULTIMODAL_UNAVAILABLE"
+    httpStatus: 503
+    message: "多模态模型服务不可用"
+    userAction: "图像分析暂时不可用，将基于问卷信息继续分析"
+    module: "multimodal"
+
+  - code: "MULTIMODAL_RATE_LIMITED"
+    httpStatus: 429
+    message: "多模态模型调用频率超限"
+    userAction: "请稍后重试"
+    module: "multimodal"
+
+  - code: "MULTIMODAL_UNSUPPORTED_IMAGE"
+    httpStatus: 400
+    message: "图片内容无法被多模态模型处理（如模糊、过暗、非绘画内容）"
+    userAction: "请上传清晰的画作照片"
+    module: "multimodal"
+
+  # ============================================================
+  # Agent调用错误 (AGENT_*)
+  # ============================================================
+  - code: "AGENT_TIMEOUT"
+    httpStatus: 504
+    message: "Agent分析超时"
+    userAction: "请稍后重试"
+    module: "agent"
+
+  - code: "AGENT_TOOL_ERROR"
+    httpStatus: 500
+    message: "Agent工具调用执行失败"
+    userAction: "请稍后重试，如持续失败请联系管理员"
+    module: "agent"
+
+  - code: "AGENT_INVALID_OUTPUT"
+    httpStatus: 500
+    message: "Agent输出格式不符合预期Schema"
+    userAction: "请稍后重试"
+    module: "agent"
+
+  - code: "AGENT_RAG_RETRIEVAL_FAILED"
+    httpStatus: 500
+    message: "RAG知识检索失败"
+    userAction: "分析将继续进行，但可能缺少部分背景知识引用"
+    module: "agent"
+
+  # ============================================================
+  # 通用错误 (GENERAL_*)
+  # ============================================================
+  - code: "RATE_LIMITED"
+    httpStatus: 429
+    message: "请求频率超过限制"
+    userAction: "请稍后重试"
+    module: "general"
+
+  - code: "INTERNAL_ERROR"
+    httpStatus: 500
+    message: "服务器内部错误"
+    userAction: "请稍后重试，如持续失败请联系管理员"
+    module: "general"
+
+  - code: "SERVICE_UNAVAILABLE"
+    httpStatus: 503
+    message: "服务暂时不可用"
+    userAction: "请稍后重试"
+    module: "general"

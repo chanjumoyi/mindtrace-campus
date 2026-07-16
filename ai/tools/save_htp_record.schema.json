@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "save_htp_record",
+  "description": "保存房树人记录——将用户上传的画作图片引用和结构化问卷答案保存到数据库",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "const": "save_htp_record"
+    },
+    "parameters": {
+      "type": "object",
+      "required": ["sessionId", "drawingOrder", "completeness", "idempotencyKey"],
+      "properties": {
+        "sessionId": { "type": "string" },
+        "imageRef": {
+          "type": ["string", "null"],
+          "description": "画作图片的文件引用路径。为null时仅保存问卷信息。"
+        },
+        "drawingOrder": {
+          "type": "string",
+          "enum": ["house-first", "tree-first", "person-first", "not-sure"]
+        },
+        "completeness": {
+          "type": "string",
+          "enum": ["complete", "mostly-complete", "partial"]
+        },
+        "houseDescription": { "type": ["string", "null"], "maxLength": 500 },
+        "treeDescription": { "type": ["string", "null"], "maxLength": 500 },
+        "personDescription": { "type": ["string", "null"], "maxLength": 500 },
+        "idempotencyKey": { "type": "string" }
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "recordId": { "type": "string" },
+      "status": { "type": "string", "enum": ["saved", "cached"] }
+    }
+  },
+  "permission": {
+    "level": "write",
+    "scope": "own-records"
+  },
+  "reliability": {
+    "timeout": 5000,
+    "maxRetries": 3,
+    "retryStrategy": "exponential-backoff",
+    "idempotencyKeyField": "idempotencyKey"
+  },
+  "errorFallback": {
+    "timeout": "保存超时，请稍后重试。",
+    "validationError": "问卷数据不完整，请检查必填项。",
+    "serverError": "保存失败，请稍后重试。"
+  }
+}
