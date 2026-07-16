@@ -1,0 +1,254 @@
+openapi: "3.0.3"
+info:
+  title: 心迹AI - 房树人分析接口
+  description: 房树人(HTP)辅助分析API，接收绘画图片和结构化问卷，返回视觉观察和Agent分析结果。多模态模型不可用时自动降级为仅问卷分析。
+  version: "1.0.0"
+  contact:
+    name: 角色B - 多模态算法与Agent工程
+
+servers:
+  - url: /api/v1
+    description: 本地开发环境（通过Mock Adapter）
+  - url: https://<kingdee-tenant>/api/v1
+    description: 金蝶AI苍穹环境（待迁移）
+
+paths:
+  /htp/analyze:
+    post:
+      operationId: analyzeHTP
+      summary: 分析房树人画作
+      description: |
+        接收用户上传的房树人画作图片引用和结构化问卷答案，
+        通过多模态模型（可选）提取视觉观察，再由Agent生成分析结果。
+        多模态模型不可用时，visualObservation为null，分析仅基于问卷。
+      tags:
+        - HTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HTPAnalysisRequest"
+            examples:
+              full:
+                summary: 完整请求（含图片）
+                value:
+                  sessionId: "sess-20240716-002"
+                  imageRef: "img/htp/drawing-001.png"
+                  drawingOrder: "house-first"
+                  completeness: "complete"
+                  houseDescription: "一栋两层小楼，有烟囱，窗户不大"
+                  treeDescription: "一棵大树立在房子旁边"
+                  personDescription: "一个小孩站在树下"
+              questionnaireOnly:
+                summary: 仅问卷（多模态不可用降级）
+                value:
+                  sessionId: "sess-20240716-003"
+                  imageRef: null
+                  drawingOrder: "not-sure"
+                  completeness: "partial"
+                  houseDescription: "简单的方形房子"
+                  treeDescription: null
+                  personDescription: null
+      responses:
+        "200":
+          description: 分析成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTPAnalysisResponse"
+        "400":
+          description: 输入验证失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: 图片引用不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: "HTP_IMAGE_NOT_FOUND"
+                message: "图片引用不存在: img/htp/drawing-001.png"
+        "500":
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HTPAnalysisRequest:
+      type: object
+      required:
+        - sessionId
+        - drawingOrder
+        - completeness
+      properties:
+        sessionId:
+          type: string
+          description: 会话标识
+          example: "sess-20240716-002"
+        timestamp:
+          type: string
+          format: date-time
+          description: 请求时间戳
+        imageRef:
+          type: string
+          nullable: true
+          description: 画作图片的文件引用路径，为null时仅基于问卷分析
+          example: "img/htp/drawing-001.png"
+        drawingOrder:
+          type: string
+          enum:
+            - "house-first"
+            - "tree-first"
+            - "person-first"
+            - "not-sure"
+          description: 绘制顺序（房子先/树先/人先/不确定）
+        completeness:
+          type: string
+          enum:
+            - "complete"
+            - "mostly-complete"
+            - "partial"
+          description: 用户对画面完整度的自评
+        houseDescription:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 对房子的描述（可选）
+        treeDescription:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 对树的描述（可选）
+        personDescription:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 对人的描述（可选）
+
+    HTPAnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          description: 本次分析的唯一标识
+        visualObservation:
+          oneOf:
+            - $ref: "#/components/schemas/VisualObservation"
+            - type: "null"
+          description: 多模态模型视觉观察结果。模型不可用时为null。
+        questionnaireSummary:
+          $ref: "#/components/schemas/QuestionnaireSummary"
+        agentAnalysis:
+          $ref: "#/components/schemas/HTPAgentAnalysis"
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+        degradationNote:
+          type: string
+          nullable: true
+          description: 降级说明（多模态不可用时）
+          example: "图像分析暂不可用，以下分析仅基于问卷信息"
+        createdAt:
+          type: string
+          format: date-time
+
+    VisualObservation:
+      type: object
+      description: 多模态模型对画作的客观描述（不含心理推断）
+      properties:
+        houseDescription:
+          type: string
+          description: 画面中房子的大小、位置、细节、是否有门窗/屋顶/烟囱等
+          example: "画面中央偏左有一栋单层房屋，三角形屋顶，有门但无窗户，烟囱位于右侧"
+        treeDescription:
+          type: string
+          description: 画面中树的大小、形态、是否有根/干/冠、是否有果实等
+          example: "房屋右侧有一棵大树，树冠茂密呈圆形，无可见果实，树干粗壮"
+        personDescription:
+          type: string
+          description: 画面中人物的位置、大小、动作、是否完整等
+          example: "画面左下角有一个小型人物，站姿，双臂下垂，五官模糊"
+        overallPlacement:
+          type: string
+          description: 画面整体布局描述
+          example: "三个元素集中在画面中下部，上方留白较多，元素大小比例不协调"
+        notableFeatures:
+          type: array
+          items:
+            type: string
+          description: 值得注意的客观特征列表
+          example:
+            - "房屋缺少窗户"
+            - "人物尺寸显著小于其他元素"
+            - "树冠与树干比例偏大"
+
+    QuestionnaireSummary:
+      type: object
+      properties:
+        drawingOrder:
+          type: string
+        completeness:
+          type: string
+        houseDescriptionProvided:
+          type: boolean
+        treeDescriptionProvided:
+          type: boolean
+        personDescriptionProvided:
+          type: boolean
+
+    HTPAgentAnalysis:
+      type: object
+      required:
+        - observations
+        - userInterpretation
+        - explorationPrompts
+        - disclaimer
+      properties:
+        observations:
+          type: string
+          description: 综合客观观察（来自多模态模型和问卷）
+        userInterpretation:
+          type: string
+          description: 用户自己对画作的描述和解读
+        explorationPrompts:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            type: string
+          description: 自我探索引导问题
+        disclaimer:
+          type: string
+          description: 免责声明
+          example: "房树人分析仅作为自我探索的辅助工具，不具有诊断意义"
+
+    Citation:
+      type: object
+      properties:
+        docId:
+          type: string
+        title:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object

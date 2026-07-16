@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mindline.psi/schemas/agent-output.schema.json",
+  "title": "Agent Analysis Output",
+  "description": "Agent分析输出的通用结构，沙盘和房树人共用基础字段，各有扩展",
+  "type": "object",
+  "required": ["analysisId", "agentName", "disclaimer", "createdAt"],
+  "properties": {
+    "analysisId": {
+      "type": "string",
+      "description": "本次分析的唯一标识"
+    },
+    "agentName": {
+      "type": "string",
+      "enum": ["sandplay-analysis-agent", "htp-analysis-agent"],
+      "description": "执行分析的Agent名称"
+    },
+    "promptVersion": {
+      "type": "string",
+      "description": "使用的Prompt版本号",
+      "pattern": "^v\\d+\\.\\d+(\\.\\d+)?$",
+      "examples": ["v1.0", "v1.1"]
+    },
+    "disclaimer": {
+      "type": "string",
+      "description": "免责声明，所有输出必须包含",
+      "minLength": 10
+    },
+    "citations": {
+      "type": "array",
+      "description": "RAG引用来源列表",
+      "items": {
+        "type": "object",
+        "required": ["docId", "title"],
+        "properties": {
+          "docId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string",
+            "description": "引用的原文片段（可选）"
+          }
+        }
+      }
+    },
+    "sandplaySpecific": {
+      "type": "object",
+      "description": "沙盘专属输出字段（仅sandplay-analysis-agent使用）",
+      "required": ["themeSummary", "explorationQuestions"],
+      "properties": {
+        "themeSummary": {
+          "type": "string",
+          "description": "沙盘主题摘要，描述可观察的结构模式"
+        },
+        "explorationQuestions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          },
+          "description": "自我探索问题"
+        },
+        "structuralObservations": {
+          "type": "string",
+          "description": "基于几何特征的客观结构观察（可选）"
+        }
+      }
+    },
+    "htpSpecific": {
+      "type": "object",
+      "description": "房树人专属输出字段（仅htp-analysis-agent使用）",
+      "required": ["observations", "userInterpretation", "explorationPrompts"],
+      "properties": {
+        "observations": {
+          "type": "string",
+          "description": "综合客观观察（多模态+问卷）"
+        },
+        "userInterpretation": {
+          "type": "string",
+          "description": "用户自我描述汇总"
+        },
+        "explorationPrompts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          },
+          "description": "自我探索引导问题"
+        },
+        "aiInferenceNote": {
+          "type": "string",
+          "description": "标注哪些内容是AI辅助推测而非客观事实",
+          "default": "以上部分内容为AI基于用户描述和画面观察的辅助推测，仅供参考和自我探索"
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "description": "Agent运行审计信息",
+      "properties": {
+        "agentRunId": {
+          "type": "string"
+        },
+        "toolCallsMade": {
+          "type": "integer"
+        },
+        "ragDocsRetrieved": {
+          "type": "integer"
+        },
+        "totalLatencyMs": {
+          "type": "integer"
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

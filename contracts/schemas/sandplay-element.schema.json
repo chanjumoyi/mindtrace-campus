@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mindline.psi/schemas/sandplay-element.schema.json",
+  "title": "Sandplay Element",
+  "description": "沙盘画布上的单个元素实例",
+  "type": "object",
+  "required": ["instanceId", "elementId", "category", "x", "y"],
+  "properties": {
+    "instanceId": {
+      "type": "string",
+      "description": "画布上元素实例的唯一标识（UUID或带前缀的唯一ID）",
+      "pattern": "^(inst|elem)-[a-z0-9\\-]+$",
+      "examples": ["inst-a1b2c3d4"]
+    },
+    "elementId": {
+      "type": "string",
+      "description": "元素库中预定义元素的ID",
+      "pattern": "^[a-z][a-z0-9\\-]+$",
+      "examples": ["tree-oak", "person-adult", "house-cottage"]
+    },
+    "category": {
+      "type": "string",
+      "description": "元素类别",
+      "enum": ["人物", "动物", "建筑", "植物", "自然", "交通工具", "抽象符号"]
+    },
+    "x": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 800,
+      "description": "元素中心点的X坐标（画布逻辑单位，原点左上角）"
+    },
+    "y": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 600,
+      "description": "元素中心点的Y坐标（画布逻辑单位，原点左上角）"
+    },
+    "rotation": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 360,
+      "default": 0,
+      "description": "旋转角度（度数，顺时针）"
+    },
+    "scale": {
+      "type": "number",
+      "minimum": 0.2,
+      "maximum": 3.0,
+      "default": 1.0,
+      "description": "缩放比例（1.0=原始大小）"
+    },
+    "zIndex": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999,
+      "default": 0,
+      "description": "层级顺序（数值越大越靠前）"
+    }
+  },
+  "additionalProperties": false
+}

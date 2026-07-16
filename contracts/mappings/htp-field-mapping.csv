@@ -1,0 +1,17 @@
+概念字段,苍穹领域模型字段,数据库字段,API字段,类型,说明
+房树人记录ID,htp_record_id,id,htpRecordId,String,房树人记录主键
+会话ID,session_id,session_id,sessionId,String,关联的对话会话
+用户ID,user_id,user_id,userId,String,学生标识（匿名）
+图片引用,image_ref,image_ref,imageRef,String,图片文件路径（可为null）
+绘制顺序,drawing_order,drawing_order,drawingOrder,String,枚举：house-first/tree-first/person-first/not-sure
+完整度自评,completeness,completeness,completeness,String,枚举：complete/mostly-complete/partial
+房子描述,house_description,house_desc,houseDescription,String,≤500字（可选）
+树描述,tree_description,tree_desc,treeDescription,String,≤500字（可选）
+人描述,person_description,person_desc,personDescription,String,≤500字（可选）
+视觉观察JSON,visual_observation,visual_obs_json,visualObservation,JSON,多模态模型输出（可为null）
+降级标记,degradation_flag,degradation_flag,degradationNote,String,多模态不可用时的降级说明
+分析结果ID,analysis_result_id,analysis_id,analysisId,String,关联的分析结果
+Agent分析JSON,agent_analysis,agent_analysis_json,agentAnalysis,JSON,HTPAgentAnalysis对象
+引用来源JSON,rag_citations,citations_json,citations,JSON,RAG引用列表
+创建时间,created_at,created_at,createdAt,Timestamp,
+更新时间,updated_at,updated_at,updatedAt,Timestamp,

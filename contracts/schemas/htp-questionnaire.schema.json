@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mindline.psi/schemas/htp-questionnaire.schema.json",
+  "title": "HTP Questionnaire",
+  "description": "房树人结构化问卷，包含画作信息、绘制顺序、完整度自评和元素描述",
+  "type": "object",
+  "required": ["sessionId", "drawingOrder", "completeness"],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "description": "会话标识",
+      "examples": ["sess-20240716-002"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "提交时间戳"
+    },
+    "imageRef": {
+      "type": ["string", "null"],
+      "description": "画作图片的文件引用路径。为null表示未上传图片（仅问卷分析）。",
+      "examples": ["img/htp/drawing-001.png"]
+    },
+    "drawingOrder": {
+      "type": "string",
+      "enum": ["house-first", "tree-first", "person-first", "not-sure"],
+      "description": "绘制顺序：house-first=先画房子, tree-first=先画树, person-first=先画人, not-sure=不确定"
+    },
+    "completeness": {
+      "type": "string",
+      "enum": ["complete", "mostly-complete", "partial"],
+      "description": "用户对画面完整度的自我评估：complete=完整, mostly-complete=基本完整, partial=部分完成"
+    },
+    "houseDescription": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "用户对画中房子的描述（可选）"
+    },
+    "treeDescription": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "用户对画中树的描述（可选）"
+    },
+    "personDescription": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "用户对画中人的描述（可选）"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,125 @@
+# 房树人分析任务流
+# 角色B定义 | 版本 1.0.0
+# 含多模态模型不可用时的降级分支
+
+workflow:
+  name: htp-analysis
+  version: "1.0.0"
+  description: 房树人分析任务流 —— 含多模态降级分支
+  entryCondition: "收到 POST /api/v1/htp/analyze 请求"
+
+  agent:
+    name: htp-analysis-agent
+    promptVersion: v1.0.0
+    model: platform-default
+
+  steps:
+    - id: validate-input
+      name: 输入验证
+      type: gate
+      rules:
+        - "imageRef: if not null, must be valid file reference"
+        - "drawingOrder in [house-first, tree-first, person-first, not-sure]"
+        - "completeness in [complete, mostly-complete, partial]"
+        - "descriptions: max 500 chars each if provided"
+      onFailure: return-error
+
+    - id: check-multimodal-available
+      name: 检查多模态模型可用性
+      type: gate
+      description: 检查imageRef是否为非空且多模态模型是否可用
+      condition: "$.imageRef != null"
+      branches:
+        - when: true
+          next: describe-image
+        - when: false
+          next: questionnaire-only-analysis
+
+    - id: describe-image
+      name: 多模态视觉描述
+      type: tool-call
+      tool: multimodal_describe_image
+      input:
+        imageRef: "$.imageRef"
+      output:
+        - visualObservation
+      onFailure: degrade-to-questionnaire
+      timeout: 15000
+
+    - id: degrade-to-questionnaire
+      name: 降级处理
+      type: transform
+      description: 多模态不可用时设置visualObservation=null，继续分析
+      action: "set visualObservation = null; set degradationNote = '图像分析暂不可用，以下分析仅基于问卷信息'"
+
+    - id: questionnaire-only-analysis
+      name: 仅问卷分析
+      type: transform
+      description: 跳过视觉描述，仅基于问卷数据
+
+    - id: retrieve-rag-context
+      name: RAG知识检索
+      type: tool-call
+      tool: get_rag_context
+      input:
+        topic: htp
+        query: "房树人测验 绘画分析 投射技术 解释边界"
+        maxResults: 5
+      output:
+        - documents
+      onFailure: continue
+
+    - id: run-agent-analysis
+      name: Agent分析
+      type: agent-inference
+      input:
+        prompt: htp-analysis-agent-v1
+        variables:
+          imageRef: "$.imageRef"
+          drawingOrder: "$.drawingOrder"
+          completeness: "$.completeness"
+          houseDescription: "$.houseDescription"
+          treeDescription: "$.treeDescription"
+          personDescription: "$.personDescription"
+          visualObservation: "$.visualObservation"
+          degradationNote: "$.degradationNote"
+          ragContext: "$.documents"
+      output:
+        - observations
+        - userInterpretation
+        - explorationPrompts
+        - aiInferenceNote
+        - disclaimer
+        - citations
+      onFailure: return-error
+      timeout: 15000
+
+    - id: content-safety-check
+      name: 内容安全检查
+      type: post-process
+      rules:
+        - "replace diagnostic terms"
+        - "mask PII patterns"
+        - "verify disclaimer present"
+        - "verify aiInferenceNote present"
+        - "verify observation vs interpretation separation"
+      onFailure: flag-for-review
+
+    - id: save-result
+      name: 保存分析结果
+      type: tool-call
+      tool: save_htp_record
+      inputFrom: validated-input + agent-output
+      idempotencyKey: "$.sessionId + $.timestamp"
+      onFailure: retry(3)
+
+    - id: save-audit
+      name: 保存审计记录
+      type: tool-call
+      tool: save_agent_audit
+      onFailure: continue
+
+    - id: return-result
+      name: 返回结果
+      type: output
+      schema: HTPAnalysisResponse
