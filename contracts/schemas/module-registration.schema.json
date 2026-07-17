@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinji.example.invalid/schemas/module-registration.schema.json",
+  "title": "Xinji module registration",
+  "type": "object",
+  "required": ["moduleCode", "moduleName", "ownerCode", "contractVersion", "enabled"],
+  "properties": {
+    "moduleCode": {"type": "string", "pattern": "^[A-Z0-9_-]{2,50}$"},
+    "moduleName": {"type": "string", "maxLength": 120},
+    "ownerCode": {"enum": ["A", "B", "C"]},
+    "baseUrl": {"type": ["string", "null"], "format": "uri"},
+    "healthPath": {"type": ["string", "null"], "maxLength": 200},
+    "contractVersion": {"type": "string", "maxLength": 30},
+    "enabled": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

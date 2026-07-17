@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinji.example.invalid/schemas/ai-invoke.schema.json",
+  "title": "Common AI invocation request",
+  "type": "object",
+  "required": ["moduleCode", "operation"],
+  "properties": {
+    "moduleCode": {"type": "string", "pattern": "^[A-Z0-9_-]{2,50}$"},
+    "operation": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{2,100}$"},
+    "input": {"type": "object"},
+    "timeoutMs": {"type": "integer", "minimum": 500, "maximum": 30000}
+  },
+  "additionalProperties": false
+}

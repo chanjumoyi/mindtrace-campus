@@ -1,0 +1,21 @@
+{
+  "project": "xinji-c-foundation",
+  "version": "1.0.0",
+  "scope": "C: public foundation and Kingdee integration only",
+  "generatedAt": "2026-07-16",
+  "fileCountExcludingManifests": 107,
+  "runtime": {
+    "java": "17+",
+    "springBoot": "3.5.16",
+    "postgresql": "17",
+    "node": "20+",
+    "dockerCompose": "v2"
+  },
+  "verification": {
+    "staticChecks": "passed",
+    "jdkOnlyKingdeeCoreCompile": "passed",
+    "mockAgentRuntime": "passed",
+    "mavenTests": "not-run-no-maven-network",
+    "dockerBuild": "not-run-no-docker"
+  }
+}

@@ -1,0 +1,13 @@
+概念模型,苍穹建议实体,PostgreSQL表,API字段/路径,负责人
+用户,xj_user,app_user,/api/v1/me,C
+角色,xj_role,sys_role,roles,C
+权限,xj_permission,sys_permission,permissions,C
+登录会话,xj_auth_session,auth_session,Authorization Bearer,C
+通用任务,xj_common_task,common_task,/api/v1/tasks,C
+文件对象,xj_file_object,file_object,/api/v1/files,C
+审计日志,xj_audit_log,audit_log,/api/v1/audit-logs,C
+AI调用记录,xj_ai_call_log,ai_call_log,/api/v1/ai/call-logs,C
+幂等记录,xj_idempotency,idempotency_record,Idempotency-Key,C
+模块注册,xj_module_registration,module_registration,/api/v1/modules,C
+笔迹业务对象,A自行维护,A自行维护,HANDWRITING模块契约,A
+房树人/沙盘/Agent业务对象,B自行维护,B自行维护,MULTIMODAL_AGENT模块契约,B

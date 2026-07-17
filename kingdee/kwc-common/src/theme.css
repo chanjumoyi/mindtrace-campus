@@ -1,0 +1,20 @@
+:root {
+  --xj-color-primary: #2859d9;
+  --xj-color-bg: #f5f7fb;
+  --xj-color-surface: #ffffff;
+  --xj-color-text: #172033;
+  --xj-color-muted: #667085;
+  --xj-color-danger: #b42318;
+  --xj-radius-sm: 8px;
+  --xj-radius-md: 12px;
+  --xj-radius-lg: 18px;
+  --xj-space-1: 4px;
+  --xj-space-2: 8px;
+  --xj-space-3: 12px;
+  --xj-space-4: 16px;
+  --xj-space-6: 24px;
+  --xj-focus-ring: 0 0 0 3px rgba(40, 89, 217, .25);
+}
+
+.xj-focusable:focus-visible { outline: none; box-shadow: var(--xj-focus-ring); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

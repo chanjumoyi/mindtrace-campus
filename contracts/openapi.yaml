@@ -1,0 +1,289 @@
+openapi: 3.1.0
+info:
+  title: 心迹AI C组公共基础 API
+  version: 1.0.0
+  description: |
+    C 负责人维护的横向公共契约。只包含认证、个人资料、导航、通用任务、文件、模块注册、审计和 AI 调用治理。
+    HANDWRITING（A）与 MULTIMODAL_AGENT（B）的业务算法接口不在本实现中。
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Profile
+  - name: Task
+  - name: File
+  - name: Module
+  - name: AI Gateway
+  - name: Audit
+paths:
+  /public/info:
+    get:
+      security: []
+      tags: [Auth]
+      summary: 公共服务信息
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /auth/login:
+    post:
+      security: []
+      tags: [Auth]
+      summary: 登录并取得不透明访问令牌
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 注销当前令牌
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /me:
+    get:
+      tags: [Profile]
+      summary: 当前用户资料、角色和权限
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    patch:
+      tags: [Profile]
+      summary: 更新公共个人资料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /navigation:
+    get:
+      tags: [Profile]
+      summary: 基于权限返回公共导航
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /tasks:
+    get:
+      tags: [Task]
+      summary: 查询可见的通用任务
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Task]
+      summary: 创建通用异步任务记录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTaskRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /tasks/{id}/status:
+    patch:
+      tags: [Task]
+      summary: 按状态机更新任务
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskTransitionRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Error' }
+  /files:
+    get:
+      tags: [File]
+      summary: 查询可见文件元数据
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [File]
+      summary: 上传通用文件
+      parameters:
+        - name: moduleCode
+          in: query
+          schema: { type: string, default: COMMON }
+        - name: sensitivityLevel
+          in: query
+          schema: { type: string, enum: [L1, L2, L3, L4], default: L2 }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '415': { $ref: '#/components/responses/Error' }
+  /files/{id}:
+    get:
+      tags: [File]
+      summary: 读取单个文件元数据
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [File]
+      summary: 软删除文件记录
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /files/{id}/content:
+    get:
+      tags: [File]
+      summary: 下载文件内容
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: 文件流
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+  /modules:
+    get:
+      tags: [Module]
+      summary: 查询 A/B/C 模块注册状态
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /modules/{moduleCode}:
+    put:
+      tags: [Module]
+      summary: 管理员新增或更新模块注册
+      parameters:
+        - name: moduleCode
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Z0-9_-]{2,50}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleUpsertRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /ai/invoke:
+    post:
+      tags: [AI Gateway]
+      summary: 统一 AI 调用入口（超时、重试、幂等、摘要日志）
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 120 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiInvokeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '504': { $ref: '#/components/responses/Error' }
+  /ai/call-logs:
+    get:
+      tags: [AI Gateway]
+      summary: 查询脱敏 AI 调用日志
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: 管理员查询审计日志
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-session-token
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 80 }
+        password: { type: string, maxLength: 128 }
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, maxLength: 100 }
+        email: { type: [string, 'null'], format: email, maxLength: 180 }
+    CreateTaskRequest:
+      type: object
+      required: [moduleCode, taskType, title]
+      properties:
+        moduleCode: { type: string, pattern: '^[A-Z0-9_-]{2,50}$' }
+        taskType: { type: string, maxLength: 80 }
+        title: { type: string, maxLength: 180 }
+        requestRef: { type: [string, 'null'], maxLength: 200 }
+    TaskTransitionRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED] }
+        progress: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        resultRef: { type: [string, 'null'], maxLength: 200 }
+        errorCode: { type: [string, 'null'], maxLength: 80 }
+        errorMessage: { type: [string, 'null'], maxLength: 500 }
+    ModuleUpsertRequest:
+      type: object
+      required: [moduleName, ownerCode, enabled, contractVersion]
+      properties:
+        moduleName: { type: string, maxLength: 120 }
+        ownerCode: { type: string, enum: [A, B, C] }
+        baseUrl: { type: [string, 'null'], format: uri, maxLength: 500 }
+        healthPath: { type: [string, 'null'], maxLength: 200 }
+        enabled: { type: boolean }
+        contractVersion: { type: string, maxLength: 30 }
+    AiInvokeRequest:
+      type: object
+      required: [moduleCode, operation]
+      properties:
+        moduleCode: { type: string, pattern: '^[A-Z0-9_-]{2,50}$' }
+        operation: { type: string, pattern: '^[A-Za-z0-9._:-]{2,100}$' }
+        input: { type: object, additionalProperties: true }
+        timeoutMs: { type: [integer, 'null'], minimum: 500 }
+    ApiEnvelope:
+      type: object
+      required: [success, code, message, timestamp]
+      properties:
+        success: { type: boolean }
+        code: { type: string }
+        message: { type: string }
+        data: true
+        requestId: { type: [string, 'null'] }
+        timestamp: { type: string, format: date-time }
+  responses:
+    Success:
+      description: 成功
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    Error:
+      description: 失败
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiEnvelope' }

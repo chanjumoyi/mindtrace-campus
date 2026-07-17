@@ -1,0 +1,14 @@
+{
+  "code": "xj_common_shell",
+  "name": "心迹AI公共外壳",
+  "version": "1.0.0",
+  "owner": "C",
+  "entry": "index.js",
+  "styles": ["theme.css"],
+  "properties": {
+    "moduleCode": {"type": "string", "required": true},
+    "recordId": {"type": "string", "required": false},
+    "readonly": {"type": "boolean", "default": false}
+  },
+  "events": ["ready", "navigate", "error", "task-updated"]
+}

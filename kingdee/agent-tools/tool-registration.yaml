@@ -1,0 +1,51 @@
+registryVersion: 1.0.0
+maintainer: C
+registrationPolicy:
+  authentication: 平台服务账号或短期令牌
+  idempotencyHeader: Idempotency-Key
+  requestTraceHeader: X-Request-Id
+  rawSensitiveDataInLogs: forbidden
+  writeToolsRequireAudit: true
+  highRiskClosureByAgent: forbidden
+tools:
+  - name: common_create_task
+    owner: C
+    status: implemented
+    method: POST
+    path: /api/v1/tasks
+    permission: task:write
+    purpose: 为 A/B/C 模块创建通用异步任务状态记录
+  - name: common_get_file_metadata
+    owner: C
+    status: implemented
+    method: GET
+    path: /api/v1/files/{id}
+    permission: file:read
+    purpose: 在授权范围内读取文件元数据；不返回文件原始内容
+  - name: common_ai_invoke
+    owner: C
+    status: implemented
+    method: POST
+    path: /api/v1/ai/invoke
+    permission: ai:invoke
+    purpose: 统一执行超时、重试、幂等、限流和摘要日志
+  - name: handwriting_analyze
+    owner: A
+    status: contract-reserved
+    moduleCode: HANDWRITING
+    note: C 只负责注册和网关接入，A 负责页面、特征、模型、推理与结果展示。
+  - name: sandbox_analyze
+    owner: B
+    status: contract-reserved
+    moduleCode: MULTIMODAL_AGENT
+    note: C 只负责注册和部署接入，B 负责沙盘完整纵向链路。
+  - name: htp_analyze
+    owner: B
+    status: contract-reserved
+    moduleCode: MULTIMODAL_AGENT
+    note: C 不实现房树人页面、视觉观察、Prompt 或结果展示。
+  - name: agent_workflow_execute
+    owner: B
+    status: contract-reserved
+    moduleCode: MULTIMODAL_AGENT
+    note: B 提供真实 Agent/RAG 工作流；C 的 Mock Agent 只做基础设施验证。
