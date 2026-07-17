@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mindline.example/schemas/handwriting-analysis-result.schema.json",
+  "title": "MindLine handwriting analysis result",
+  "type": "object",
+  "required": ["requestId", "status", "dataQuality", "observations", "stateScores", "confidence", "limitations", "modelVersion"],
+  "properties": {
+    "requestId": { "type": "string" },
+    "status": { "enum": ["SUCCESS", "INSUFFICIENT_DATA", "FAILED"] },
+    "dataQuality": { "type": "number", "minimum": 0, "maximum": 1 },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["feature", "description", "change"],
+        "properties": {
+          "feature": { "type": "string" },
+          "description": { "type": "string" },
+          "change": { "type": ["number", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stateScores": {
+      "type": "object",
+      "required": ["hesitation", "rhythmInstability", "writingTension"],
+      "properties": {
+        "hesitation": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "rhythmInstability": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "writingTension": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "modelVersion": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -3,43 +3,89 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>沙盘画布 - 心迹AI (本地原型)</title>
+<title>沙盘画布 - 心迹AI</title>
 <style>
+:root {
+  --ink: #18302b; --muted: #64756f; --paper: #fbfdfc;
+  --surface: #ffffff; --line: #dce7e2; --accent: #24745f;
+  --accent-dark: #175443; --accent-soft: #e5f2ed;
+  --danger: #a64545; --shadow: 0 18px 50px rgba(25, 56, 47, 0.08);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: sans-serif; background: #f5f0e8; display: flex; height: 100vh; }
+body {
+  font-family: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(circle at 90% 4%, rgba(101,177,146,0.12), transparent 32rem), #f2f6f4;
+  color: var(--ink); display: flex; height: 100vh;
+}
 /* 左侧元素库 */
-.sidebar { width: 240px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
-.sidebar h3 { padding: 16px; border-bottom: 1px solid #eee; font-size: 14px; }
-.category-tabs { display: flex; flex-wrap: wrap; padding: 8px; gap: 4px; }
-.cat-tab { padding: 4px 10px; border: 1px solid #ddd; border-radius: 14px; cursor: pointer; font-size: 12px; background: #fff; }
-.cat-tab.active { background: #4A90D9; color: #fff; border-color: #4A90D9; }
+.sidebar {
+  width: 250px; background: var(--surface); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; box-shadow: var(--shadow);
+}
+.sidebar h3 {
+  padding: 20px 16px; border-bottom: 1px solid var(--line);
+  font-size: 14px; color: var(--ink); letter-spacing: -.01em;
+}
+.category-tabs { display: flex; flex-wrap: wrap; padding: 10px; gap: 5px; }
+.cat-tab {
+  padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px;
+  cursor: pointer; font-size: 11px; background: var(--surface); color: var(--muted);
+  font-weight: 600; transition: all .15s;
+}
+.cat-tab:hover { border-color: var(--accent); color: var(--accent); }
+.cat-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .element-grid { flex: 1; overflow-y: auto; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.elem-item { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border: 1px solid #eee; border-radius: 8px; cursor: grab; font-size: 11px; text-align: center; }
-.elem-item:hover { background: #f0f4ff; border-color: #4A90D9; }
-.elem-item .icon { width: 32px; height: 32px; margin-bottom: 4px; }
+.elem-item {
+  display: flex; flex-direction: column; align-items: center; padding: 10px 4px;
+  border: 1px solid var(--line); border-radius: 14px; cursor: grab;
+  font-size: 10px; text-align: center; background: var(--paper); transition: all .15s;
+}
+.elem-item:hover { background: var(--accent-soft); border-color: var(--accent); }
+.elem-item .icon { width: 32px; height: 32px; margin-bottom: 4px; border-radius: 8px; }
 /* 主画布区 */
 .main { flex: 1; display: flex; flex-direction: column; }
-.toolbar { display: flex; gap: 8px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
-.toolbar button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
-.toolbar button:hover { background: #f0f0f0; }
-.toolbar button.primary { background: #4A90D9; color: #fff; border-color: #4A90D9; }
-.canvas-container { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
-canvas { border: 2px solid #d4c5a9; border-radius: 4px; background: #faf6ef; box-shadow: 0 2px 12px rgba(0,0,0,0.1); cursor: crosshair; }
-/* 底部描述区 */
-.description-bar { display: flex; gap: 12px; padding: 12px 16px; background: #fff; border-top: 1px solid #ddd; align-items: center; }
-.description-bar textarea { flex: 1; height: 48px; border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; font-size: 13px; resize: none; }
-.description-bar textarea::placeholder { color: #aaa; }
-/* 加载遮罩 */
-.loading-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.8); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
+.toolbar {
+  display: flex; gap: 8px; padding: 12px 20px; background: rgba(255,255,255,.85);
+  border-bottom: 1px solid var(--line); align-items: center; backdrop-filter: blur(8px);
+}
+.toolbar button {
+  min-height: 38px; padding: 6px 16px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--surface); cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--ink); transition: all .15s;
+}
+.toolbar button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.toolbar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.toolbar button.primary:hover { background: var(--accent-dark); }
+.canvas-container { flex: 1; display: flex; justify-content: center; align-items: center; padding: 24px; }
+canvas {
+  border: 1px solid #cfddd7; border-radius: 18px;
+  background-color: #fffefd;
+  background-image: linear-gradient(rgba(43,91,77,.055) 1px, transparent 1px);
+  background-size: 100% 44px;
+  box-shadow: var(--shadow); cursor: crosshair;
+}
+.description-bar {
+  display: flex; gap: 12px; padding: 14px 20px;
+  background: rgba(255,255,255,.85); border-top: 1px solid var(--line);
+  align-items: center; backdrop-filter: blur(8px);
+}
+.description-bar textarea {
+  flex: 1; height: 48px; border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; font-size: 13px; resize: none; font-family: inherit;
+  background: var(--paper); outline: none;
+}
+.description-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.description-bar textarea::placeholder { color: var(--muted); }
+.loading-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.8); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
 .loading-overlay.show { display: flex; }
-.spinner { width: 40px; height: 40px; border: 3px solid #eee; border-top-color: #4A90D9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner { width: 40px; height: 40px; border: 3px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 <!-- 元素库 -->
 <div class="sidebar">
-  <h3>🎨 沙盘元素库</h3>
+  <h3>沙盘元素库</h3>
   <div class="category-tabs" id="categoryTabs">
     <button class="cat-tab active" data-cat="all">全部</button>
     <button class="cat-tab" data-cat="人物">人物</button>
@@ -55,19 +101,19 @@ canvas { border: 2px solid #d4c5a9; border-radius: 4px; background: #faf6ef; box
 <!-- 主区域 -->
 <div class="main">
   <div class="toolbar">
-    <button onclick="undo()">↩ 撤销</button>
-    <button onclick="redo()">↪ 重做</button>
-    <button onclick="clearCanvas()">🗑 清空</button>
+    <button onclick="undo()">撤销</button>
+    <button onclick="redo()">重做</button>
+    <button onclick="clearCanvas()">清空清空</button>
     <span style="flex:1"></span>
-    <button onclick="toggleGrid()">📐 网格</button>
-    <button class="primary" onclick="saveAndAnalyze()">💾 保存并分析</button>
-    <button class="primary" style="background:#E85D75;border-color:#E85D75;margin-left:4px" onclick="openAIChat()">🤖 AI 助手</button>
+    <button onclick="toggleGrid()">网格网格</button>
+    <button class="primary" onclick="saveAndAnalyze()">保存并分析保存并分析</button>
+    <button class="primary" style="margin-left:4px" onclick="openAIChat()">AI 助手</button>
   </div>
   <div class="canvas-container">
     <canvas id="sandCanvas" width="800" height="600"></canvas>
   </div>
   <div class="description-bar">
-    <span style="font-size:13px;color:#666">📝</span>
+    <span style="font-size:13px;color:#666"></span>
     <textarea id="descInput" maxlength="500" placeholder="描述你的沙盘作品（可选，最多500字）..."></textarea>
     <span id="charCount" style="font-size:11px;color:#aaa">0/500</span>
   </div>
@@ -153,7 +199,7 @@ function drawElement(e) {
   ctx.fillText(def.label || e.elementId, 0, 28);
   // 选中高亮
   if (selectedElem === e) {
-    ctx.strokeStyle = '#4A90D9';
+    ctx.strokeStyle = '#24745f';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.stroke();
   }

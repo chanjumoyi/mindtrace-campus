@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mindline.example/schemas/handwriting-trace.schema.json",
+  "title": "MindLine online handwriting trace",
+  "type": "object",
+  "required": ["schemaVersion", "sessionId", "participantId", "task", "consent", "selfReport", "device", "canvas", "timing", "summary", "points"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "participantId": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,40}$" },
+    "task": {
+      "type": "object",
+      "required": ["type", "promptId", "promptText"],
+      "properties": {
+        "type": { "enum": ["copy_text", "free_writing"] },
+        "promptId": { "type": "string" },
+        "promptText": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "consent": {
+      "type": "object",
+      "required": ["selfDataOnly", "accepted", "noticeVersion"],
+      "properties": {
+        "selfDataOnly": { "type": "boolean" },
+        "accepted": { "type": "boolean" },
+        "noticeVersion": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "selfReport": {
+      "type": "object",
+      "required": ["stressLevel", "moodLevel", "sleepQuality", "note"],
+      "properties": {
+        "stressLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "moodLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "sleepQuality": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "note": { "type": "string", "maxLength": 120 }
+      },
+      "additionalProperties": false
+    },
+    "device": {
+      "type": "object",
+      "required": ["userAgent", "platform", "maxTouchPoints", "devicePixelRatio", "observedPointerTypes", "supportsPressure", "supportsTilt"],
+      "properties": {
+        "userAgent": { "type": "string" },
+        "platform": { "type": "string" },
+        "maxTouchPoints": { "type": "integer", "minimum": 0 },
+        "devicePixelRatio": { "type": "number", "exclusiveMinimum": 0 },
+        "observedPointerTypes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "supportsPressure": { "type": "boolean" },
+        "supportsTilt": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height", "background"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "background": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "timing": {
+      "type": "object",
+      "required": ["createdAt", "startedAt", "endedAt", "durationMs"],
+      "properties": {
+        "createdAt": { "type": "string", "format": "date-time" },
+        "startedAt": { "type": ["string", "null"], "format": "date-time" },
+        "endedAt": { "type": ["string", "null"], "format": "date-time" },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["pointCount", "strokeCount"],
+      "properties": {
+        "pointCount": { "type": "integer", "minimum": 0 },
+        "strokeCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "points": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/point" }
+    }
+  },
+  "$defs": {
+    "nullableNumber": { "type": ["number", "null"] },
+    "point": {
+      "type": "object",
+      "required": ["strokeId", "sequence", "phase", "pointerType", "timestampEpochMs", "elapsedMs", "x", "y", "xNorm", "yNorm", "canvasWidth", "canvasHeight", "pressure", "tiltX", "tiltY", "twist", "tangentialPressure", "contactWidth", "contactHeight"],
+      "properties": {
+        "strokeId": { "type": "integer", "minimum": 1 },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "phase": { "enum": ["down", "move", "up"] },
+        "pointerType": { "type": "string" },
+        "timestampEpochMs": { "type": "integer", "minimum": 0 },
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "xNorm": { "type": "number", "minimum": 0, "maximum": 1 },
+        "yNorm": { "type": "number", "minimum": 0, "maximum": 1 },
+        "canvasWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "canvasHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "pressure": { "$ref": "#/$defs/nullableNumber" },
+        "tiltX": { "$ref": "#/$defs/nullableNumber" },
+        "tiltY": { "$ref": "#/$defs/nullableNumber" },
+        "twist": { "$ref": "#/$defs/nullableNumber" },
+        "tangentialPressure": { "$ref": "#/$defs/nullableNumber" },
+        "contactWidth": { "$ref": "#/$defs/nullableNumber" },
+        "contactHeight": { "$ref": "#/$defs/nullableNumber" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

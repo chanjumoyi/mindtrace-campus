@@ -5,3 +5,7 @@ openspec/
 .claude/
 
 cosmic/
+
+# Java build artifacts
+target/
+*.class
