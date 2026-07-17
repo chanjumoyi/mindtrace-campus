@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#f4f7f5">
+  <title>心迹AI · 笔迹轨迹采集器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">MINDLINE · DATA COLLECTOR V0.1</p>
+        <h1>笔迹轨迹采集器</h1>
+        <p class="subtitle">记录书写过程中的位置、时间、压力与倾角，用于行为特征研究；不提供心理诊断。</p>
+      </div>
+      <div class="status-pill" id="saveStatus">尚未开始</div>
+    </header>
+
+    <section class="panel setup-panel">
+      <div class="panel-title">
+        <div>
+          <span class="step">01</span>
+          <h2>采集设置</h2>
+        </div>
+        <button class="text-button" id="newSessionButton" type="button">新建会话</button>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          <span>参与者代号</span>
+          <input id="participantId" value="self-001" autocomplete="off" maxlength="40">
+        </label>
+        <label>
+          <span>任务类型</span>
+          <select id="taskType">
+            <option value="copy_text">固定文本抄写</option>
+            <option value="free_writing">60秒自由书写</option>
+          </select>
+        </label>
+        <label>
+          <span>当前压力（1低—5高）</span>
+          <select id="stressLevel">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <label>
+          <span>当前心情（1差—5好）</span>
+          <select id="moodLevel">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <label>
+          <span>昨晚睡眠（1差—5好）</span>
+          <select id="sleepQuality">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <label>
+          <span>备注（可选）</span>
+          <input id="note" placeholder="例如：刚结束一场考试" maxlength="120">
+        </label>
+      </div>
+
+      <label class="consent-row">
+        <input id="consent" type="checkbox">
+        <span>我理解本页面保存的是研究用笔迹行为数据，结果不能用于医学诊断；本次先使用自己的数据。</span>
+      </label>
+      <label class="input-mode-row">
+        <input id="allowNonPen" type="checkbox">
+        <span><strong>PC调试模式：</strong>允许鼠标或手指书写。平板使用Huawei Pencil采集时请保持关闭。</span>
+      </label>
+    </section>
+
+    <section class="panel writing-panel">
+      <div class="panel-title">
+        <div>
+          <span class="step">02</span>
+          <h2>开始书写</h2>
+        </div>
+        <div class="timer" id="timer">00:00.0</div>
+      </div>
+
+      <div class="prompt-card">
+        <span>书写任务</span>
+        <strong id="promptText">请保持自然书写：今天的努力，正在成为明天的底气。</strong>
+      </div>
+
+      <div class="device-strip" aria-label="设备能力">
+        <div><span>输入</span><strong id="pointerTypeValue">等待检测</strong></div>
+        <div><span>压感</span><strong id="pressureValue">等待检测</strong></div>
+        <div><span>倾角</span><strong id="tiltValue">等待检测</strong></div>
+        <div><span>采样点</span><strong id="pointCountValue">0</strong></div>
+        <div><span>笔划</span><strong id="strokeCountValue">0</strong></div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="writingCanvas" aria-label="笔迹书写区域"></canvas>
+        <div class="canvas-placeholder" id="canvasPlaceholder">
+          <strong>请先勾选知情说明</strong>
+          <span>然后使用Huawei Pencil在此处书写；手指和手掌会被忽略</span>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button id="undoButton" type="button" class="secondary-button">撤销上一笔</button>
+        <button id="clearButton" type="button" class="secondary-button danger">清空</button>
+        <button id="replayButton" type="button" class="secondary-button">回放</button>
+      </div>
+    </section>
+
+    <section class="panel export-panel">
+      <div class="panel-title">
+        <div>
+          <span class="step">03</span>
+          <h2>检查与导出</h2>
+        </div>
+      </div>
+
+      <div class="quality-box" id="qualityBox">
+        <strong>等待数据</strong>
+        <span>至少完成3个笔划、记录20个采样点后再导出。</span>
+      </div>
+
+      <div class="export-actions">
+        <button id="exportJsonButton" class="primary-button" type="button">导出轨迹 JSON</button>
+        <button id="exportPngButton" class="secondary-button" type="button">导出笔迹 PNG</button>
+        <label class="import-button">
+          导入并回放 JSON
+          <input id="importJsonInput" type="file" accept="application/json,.json">
+        </label>
+      </div>
+      <p class="privacy-note">文件只下载到当前设备，不会自动上传服务器。不要在公开仓库提交可识别个人的信息。</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
