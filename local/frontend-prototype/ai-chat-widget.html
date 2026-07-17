@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 助手 - 心迹AI</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; background: #f5f5f5; display: flex; flex-direction: column; height: 100vh; }
+.header { padding: 12px 16px; background: #4A90D9; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+.header h3 { font-size: 14px; }
+.header button { background: none; border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.mode-tabs { display: flex; gap: 4px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #eee; }
+.mode-tab { padding: 4px 12px; border: 1px solid #ddd; border-radius: 14px; cursor: pointer; font-size: 11px; background: #fff; }
+.mode-tab.active { background: #4A90D9; color: #fff; border-color: #4A90D9; }
+.messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+.msg.system { background: #fff3e0; align-self: center; max-width: 95%; font-size: 11px; color: #888; border: 1px dashed #e0d0b0; }
+.msg.assistant { background: #fff; align-self: flex-start; border: 1px solid #e8e8e8; }
+.msg.assistant .citation { font-size: 10px; color: #4A90D9; margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
+.msg.user { background: #4A90D9; color: #fff; align-self: flex-end; }
+.typing { align-self: flex-start; padding: 8px 14px; font-size: 12px; color: #888; }
+.input-area { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid #eee; }
+.input-area input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; outline: none; }
+.input-area input:focus { border-color: #4A90D9; }
+.input-area button { padding: 8px 18px; border: none; border-radius: 20px; background: #4A90D9; color: #fff; cursor: pointer; font-size: 13px; }
+.input-area button:disabled { background: #ccc; cursor: not-allowed; }
+.context-badge { font-size: 10px; background: #e8f0fe; color: #4A90D9; padding: 3px 8px; border-radius: 10px; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h3>🤖 AI 助手 <span id="pageLabel"></span></h3>
+  <button onclick="newChat()">+ 新对话</button>
+</div>
+<div class="mode-tabs" id="modeTabs">
+  <button class="mode-tab active" data-mode="float">悬浮右侧</button>
+  <button class="mode-tab" data-mode="embed">嵌入页面</button>
+  <button class="mode-tab" data-mode="popup">小弹窗</button>
+</div>
+<div class="messages" id="messages"></div>
+<div class="typing" id="typingIndicator" style="display:none">AI 正在思考...</div>
+<div class="input-area">
+  <input id="msgInput" type="text" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')sendMsg()">
+  <button id="sendBtn" onclick="sendMsg()">发送</button>
+</div>
+
+<script>
+// ===== 状态 =====
+let chatSessionId = 'session-' + Date.now();
+let messages = [];
+let isStreaming = false;
+let currentMode = 'float';
+
+// ===== 页面上下文注入 =====
+function getPageContext() {
+  // 尝试从 opener 获取沙盘数据
+  if (window.opener && window.opener._sandplayContext) {
+    return window.opener._sandplayContext;
+  }
+  // 尝试从 opener 获取笔迹数据
+  if (window.opener && window.opener._handwritingContext) {
+    return window.opener._handwritingContext;
+  }
+  return { page: 'unknown' };
+}
+
+// ===== 初始化 =====
+(function init() {
+  const ctx = getPageContext();
+  document.getElementById('pageLabel').textContent =
+    ctx.page === 'sandplay' ? '· 沙盘' : ctx.page === 'handwriting' ? '· 笔迹' : '';
+
+  // 注入系统上下文消息
+  const ctxMsg = buildContextMessage(ctx);
+  if (ctxMsg) {
+    addMessage('system', ctxMsg);
+  }
+
+  // 模式切换
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentMode = tab.dataset.mode;
+      // 通知父页面调整布局（实际苍穹SDK通过 mountingMethod 控制）
+      console.log('展示模式切换为:', currentMode);
+    });
+  });
+})();
+
+function buildContextMessage(ctx) {
+  if (ctx.page === 'sandplay') {
+    return `📋 当前沙盘状态: ${ctx.elementCount}个元素, 类别: ${(ctx.categories||[]).join('/') || '无'}。${ctx.description ? '描述: '+ctx.description : ''}`;
+  }
+  if (ctx.page === 'handwriting') {
+    return `📋 当前笔迹状态: ${ctx.strokeCount||0}笔划, 平均速度${ctx.avgSpeed||0}px/s, ${ctx.pauseCount||0}次停顿, 范围${ctx.boundsW||0}×${ctx.boundsH||0}。${ctx.description ? '描述: '+ctx.description : ''}`;
+  }
+  return null;
+}
+
+// ===== 消息管理 =====
+function addMessage(role, text, citations) {
+  messages.push({ role, text, citations, time: Date.now() });
+  renderMessages();
+}
+
+function renderMessages() {
+  const container = document.getElementById('messages');
+  container.innerHTML = messages.map(m => {
+    let extra = '';
+    if (m.citations && m.citations.length > 0) {
+      extra = '<div class="citation">📚 参考: ' + m.citations.map(c => c.title).join(', ') + '</div>';
+    }
+    return `<div class="msg ${m.role}">${m.text}${extra}</div>`;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+// ===== 发送消息 =====
+async function sendMsg() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text || isStreaming) return;
+
+  input.value = '';
+  addMessage('user', text);
+  isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('typingIndicator').style.display = 'block';
+
+  // Mock Agent 响应（迁移到 cosmic 后替换为 EmbeddedControlService.chat()）
+  await mockAgentResponse(text);
+
+  document.getElementById('typingIndicator').style.display = 'none';
+  document.getElementById('sendBtn').disabled = false;
+  isStreaming = false;
+}
+
+async function mockAgentResponse(userText) {
+  const ctx = getPageContext();
+  await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+
+  let response;
+  if (ctx.page === 'sandplay') {
+    response = mockSandplayResponse(ctx, userText);
+  } else if (ctx.page === 'handwriting') {
+    response = mockHandwritingResponse(ctx, userText);
+  } else {
+    response = { text: '你好！我是心迹AI助手。请打开沙盘或笔迹页面来使用我的分析功能。', citations: [] };
+  }
+
+  // 模拟流式效果
+  if (response.text.length > 30) {
+    const chunks = response.text.match(/.{1,15}/g) || [response.text];
+    const fakeStream = document.createElement('div');
+    fakeStream.className = 'msg assistant';
+    document.getElementById('messages').appendChild(fakeStream);
+    document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+
+    for (const chunk of chunks) {
+      fakeStream.textContent += chunk;
+      document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+      await new Promise(r => setTimeout(r, 80 + Math.random() * 120));
+    }
+    fakeStream.textContent = response.text;
+    if (response.citations?.length) {
+      const citDiv = document.createElement('div');
+      citDiv.className = 'citation';
+      citDiv.textContent = '📚 参考: ' + response.citations.map(c => c.title).join(', ');
+      fakeStream.appendChild(citDiv);
+    }
+    messages.push({ role: 'assistant', text: response.text, citations: response.citations, time: Date.now() });
+  } else {
+    addMessage('assistant', response.text, response.citations);
+  }
+}
+
+function mockSandplayResponse(ctx, userText) {
+  const count = ctx.elementCount || 0;
+  if (count === 0) {
+    return {
+      text: '你的沙盘目前是空的。试着从左侧元素库拖一些元素到画布上，然后我们可以一起探索它们的含义。',
+      citations: []
+    };
+  }
+  return {
+    text: `我看到你的沙盘中有${count}个元素，主要类别包括${(ctx.categories||[]).join('、') || '多种'}。${ctx.description ? '你提到"'+ctx.description+'"，这让我想到...' : '你想聊聊这个沙盘作品背后的故事吗？'}沙盘中的空间布局和元素选择都是值得探索的——左上区域常与内在世界相关，右侧与未来和目标有关。这些只是参考框架，你的个人感受才是最重要的。\n\n你想深入了解哪方面呢？`,
+    citations: [{docId:'sand-ref-001', title:'沙盘游戏基础方法'}]
+  };
+}
+function mockHandwritingResponse(ctx, userText) {
+  const speed = ctx.avgSpeed || 0;
+  const pauses = ctx.pauseCount || 0;
+  let obs = `你的笔迹有${ctx.strokeCount||0}个笔划`;
+  if (speed > 200) obs += '，书写速度较快，线条流畅';
+  else if (speed > 80) obs += '，书写速度适中';
+  else if (speed > 0) obs += '，书写速度较慢，可能比较谨慎';
+  if (pauses > 3) obs += `。有${pauses}次明显停顿，可能在思考或犹豫`;
+  obs += '。需要注意：笔迹分析仅供自我探索参考，不具有诊断意义。';
+  return { text: obs, citations: [{docId:'hw-ref-001', title:'笔迹心理学基础'}] };
+}
+
+function newChat() {
+  chatSessionId = 'session-' + Date.now();
+  messages = [];
+  renderMessages();
+  const ctx = getPageContext();
+  const ctxMsg = buildContextMessage(ctx);
+  if (ctxMsg) addMessage('system', ctxMsg);
+}
+</script>
+</body>
+</html>

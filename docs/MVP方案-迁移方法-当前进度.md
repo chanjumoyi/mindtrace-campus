@@ -413,3 +413,40 @@ mindLine/
 └── kingdee/evidence/                            ← 苍穹迁移
     └── sandplay-htp-migration-checklist.md
 ```
+能做什么 vs 不能做什么
+
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  ✅ 本地能做的:                                               │
+│  · 写 EmbeddedAgentPlugin 的完整 Java 代码框架                │
+│  · 写 switch(event): openAgent / chat / stop / sendMessage  │
+│  · 写 buildPageContext() 读取沙盘/笔迹数据                    │
+│  · 写 LocalMockEmbeddedService 模拟对话                      │
+│  · 写 KWC 页面的 AI 按钮和 fireCustomEvent 调用               │
+│                                                             │
+│  🔴 本地不能做的:                                             │
+│  · 编译需要 kd.bos.gptas.api.embedctrl.EmbeddedControlService│
+│    这个类在 cosmic 的 bos jar 里，本地没有                     │
+│  · 实际运行嵌入式控件弹窗（需要苍穹运行时环境）                  │
+│                                                             │
+│  迁移时做的事:                                                │
+│  · 把写好的 .java 文件放进 cosmic/cloud-app/plugin/other/     │
+│  · Gradle 编译 → bos jar 提供 SDK → 编译通过                  │
+│  · DebugApplication.main() 启动 → 控件可用                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+具体来说
+你在本地写的代码搬到 cosmic 后，只需要改 import 这一个地方：
+
+
+// 本地写的（Mock）:
+// EmbeddedAgentService 是我们自己定义的接口
+EmbeddedAgentService.show(...)
+
+// 迁移到 cosmic 后（真实）:
+import kd.bos.gptas.api.embedctrl.EmbeddedControlService;  // ← bos jar 提供
+EmbeddedControlService.show(formView, agentParam, showStyle);
+方法名和参数基本一致（因为之前你就是照着官方文档的 SDK API 设计的），迁移就是替换 import + 删除 Mock 类。
+
+结论
+可以放心在本地写，迁移成本很低——换一个 import，删掉 Mock 实现，在 cosmic 里 gradle build 就通了

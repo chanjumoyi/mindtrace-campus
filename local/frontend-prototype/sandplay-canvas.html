@@ -61,6 +61,7 @@ canvas { border: 2px solid #d4c5a9; border-radius: 4px; background: #faf6ef; box
     <span style="flex:1"></span>
     <button onclick="toggleGrid()">📐 网格</button>
     <button class="primary" onclick="saveAndAnalyze()">💾 保存并分析</button>
+    <button class="primary" style="background:#E85D75;border-color:#E85D75;margin-left:4px" onclick="openAIChat()">🤖 AI 助手</button>
   </div>
   <div class="canvas-container">
     <canvas id="sandCanvas" width="800" height="600"></canvas>
@@ -284,6 +285,20 @@ document.querySelectorAll('.cat-tab').forEach(btn => {
 document.getElementById('descInput').addEventListener('input', e => {
   document.getElementById('charCount').textContent = e.target.value.length + '/500';
 });
+
+// ===== AI 助手集成 =====
+function getPageContext() {
+  return {
+    page: 'sandplay',
+    elementCount: elements.length,
+    categories: [...new Set(elements.map(e => e.category))],
+    userDescription: document.getElementById('descInput').value.trim()
+  };
+}
+function openAIChat() {
+  window._sandplayContext = getPageContext();
+  window.open('ai-chat-widget.html', 'aiChat', 'width=420,height=600');
+}
 
 renderElementLibrary('all');
 drawAll();
