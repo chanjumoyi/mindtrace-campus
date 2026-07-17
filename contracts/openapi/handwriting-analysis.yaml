@@ -1,0 +1,88 @@
+openapi: "3.0.3"
+info:
+  title: 心迹AI - 笔迹分析接口
+  description: 笔迹检测模块分析API，接收手写轨迹数据进行特征提取和Agent分析
+  version: "1.0.0"
+
+paths:
+  /handwriting/analyze:
+    post:
+      operationId: analyzeHandwriting
+      summary: 分析笔迹
+      tags: [Handwriting]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, strokes]
+              properties:
+                sessionId:
+                  type: string
+                strokes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      color: { type: string }
+                      width: { type: number }
+                      points:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            x: { type: number }
+                            y: { type: number }
+                            t: { type: integer }
+                userDescription:
+                  type: string
+                  maxLength: 300
+      responses:
+        "200":
+          description: 分析成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analysisId: { type: string }
+                  features:
+                    type: object
+                    properties:
+                      strokeCount: { type: integer }
+                      totalPoints: { type: integer }
+                      avgSpeedPxPerSec: { type: number }
+                      pauseCount: { type: integer }
+                      boundWidth: { type: number }
+                      boundHeight: { type: number }
+                      densityPer10kPx: { type: number }
+                  agentAnalysis:
+                    type: object
+                    properties:
+                      featureSummary: { type: string }
+                      observations: { type: string }
+                      explorationQuestions:
+                        type: array
+                        items: { type: string }
+                      disclaimer: { type: string }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        docId: { type: string }
+                        title: { type: string }
+        "400":
+          description: 空画布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
