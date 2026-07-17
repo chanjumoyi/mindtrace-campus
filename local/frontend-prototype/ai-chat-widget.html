@@ -5,32 +5,55 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI 助手 - 心迹AI</title>
 <style>
+:root {
+  --ink: #18302b; --muted: #64756f; --paper: #fbfdfc;
+  --surface: #ffffff; --line: #dce7e2; --accent: #24745f;
+  --accent-dark: #175443; --accent-soft: #e5f2ed;
+  --danger: #a64545; --shadow: 0 18px 50px rgba(25,56,47,0.08);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: sans-serif; background: #f5f5f5; display: flex; flex-direction: column; height: 100vh; }
-.header { padding: 12px 16px; background: #4A90D9; color: #fff; display: flex; justify-content: space-between; align-items: center; }
-.header h3 { font-size: 14px; }
-.header button { background: none; border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-.mode-tabs { display: flex; gap: 4px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #eee; }
-.mode-tab { padding: 4px 12px; border: 1px solid #ddd; border-radius: 14px; cursor: pointer; font-size: 11px; background: #fff; }
-.mode-tab.active { background: #4A90D9; color: #fff; border-color: #4A90D9; }
-.messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
-.msg.system { background: #fff3e0; align-self: center; max-width: 95%; font-size: 11px; color: #888; border: 1px dashed #e0d0b0; }
-.msg.assistant { background: #fff; align-self: flex-start; border: 1px solid #e8e8e8; }
-.msg.assistant .citation { font-size: 10px; color: #4A90D9; margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
-.msg.user { background: #4A90D9; color: #fff; align-self: flex-end; }
-.typing { align-self: flex-start; padding: 8px 14px; font-size: 12px; color: #888; }
-.input-area { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid #eee; }
-.input-area input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; outline: none; }
-.input-area input:focus { border-color: #4A90D9; }
-.input-area button { padding: 8px 18px; border: none; border-radius: 20px; background: #4A90D9; color: #fff; cursor: pointer; font-size: 13px; }
-.input-area button:disabled { background: #ccc; cursor: not-allowed; }
-.context-badge { font-size: 10px; background: #e8f0fe; color: #4A90D9; padding: 3px 8px; border-radius: 10px; margin: 0 4px; }
+body {
+  font-family: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(circle at 90% 4%, rgba(101,177,146,0.12), transparent 32rem), #f2f6f4;
+  display: flex; flex-direction: column; height: 100vh; color: var(--ink);
+}
+.header {
+  padding: 14px 18px; background: var(--accent); color: #fff;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.header h3 { font-size: 14px; font-weight: 700; }
+.header button { background: none; border: 1px solid rgba(255,255,255,.5); color: #fff; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.header button:hover { background: rgba(255,255,255,.1); }
+.mode-tabs { display: flex; gap: 5px; padding: 8px 14px; background: rgba(255,255,255,.85); border-bottom: 1px solid var(--line); }
+.mode-tab { padding: 5px 14px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-size: 11px; background: var(--surface); color: var(--muted); font-weight: 600; }
+.mode-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+.msg.system { background: var(--accent-soft); align-self: center; max-width: 95%; font-size: 11px; color: var(--muted); border: 1px dashed var(--line); }
+.msg.assistant { background: var(--surface); align-self: flex-start; border: 1px solid var(--line); }
+.msg.assistant .citation { font-size: 10px; color: var(--accent); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.msg.user { background: var(--accent); color: #fff; align-self: flex-end; }
+.typing { align-self: flex-start; padding: 8px 14px; font-size: 12px; color: var(--muted); }
+.input-area {
+  display: flex; gap: 8px; padding: 12px 14px;
+  background: rgba(255,255,255,.85); border-top: 1px solid var(--line);
+}
+.input-area input {
+  flex: 1; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 13px; outline: none; font-family: inherit; background: var(--paper);
+}
+.input-area input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input-area button {
+  padding: 10px 20px; border: none; border-radius: 999px;
+  background: var(--accent); color: #fff; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.input-area button:disabled { opacity: .45; cursor: not-allowed; }
+.context-badge { font-size: 10px; background: var(--accent-soft); color: var(--accent); padding: 4px 10px; border-radius: 999px; margin: 0 4px; }
 </style>
 </head>
 <body>
 <div class="header">
-  <h3>🤖 AI 助手 <span id="pageLabel"></span></h3>
+  <h3>AI 助手 <span id="pageLabel"></span></h3>
   <button onclick="newChat()">+ 新对话</button>
 </div>
 <div class="mode-tabs" id="modeTabs">
@@ -91,10 +114,10 @@ function getPageContext() {
 
 function buildContextMessage(ctx) {
   if (ctx.page === 'sandplay') {
-    return `📋 当前沙盘状态: ${ctx.elementCount}个元素, 类别: ${(ctx.categories||[]).join('/') || '无'}。${ctx.description ? '描述: '+ctx.description : ''}`;
+    return `当前沙盘状态: ${ctx.elementCount}个元素, 类别: ${(ctx.categories||[]).join('/') || '无'}。${ctx.description ? '描述: '+ctx.description : ''}`;
   }
   if (ctx.page === 'handwriting') {
-    return `📋 当前笔迹状态: ${ctx.strokeCount||0}笔划, 平均速度${ctx.avgSpeed||0}px/s, ${ctx.pauseCount||0}次停顿, 范围${ctx.boundsW||0}×${ctx.boundsH||0}。${ctx.description ? '描述: '+ctx.description : ''}`;
+    return `当前笔迹状态: ${ctx.strokeCount||0}笔划, 平均速度${ctx.avgSpeed||0}px/s, ${ctx.pauseCount||0}次停顿, 范围${ctx.boundsW||0}×${ctx.boundsH||0}。${ctx.description ? '描述: '+ctx.description : ''}`;
   }
   return null;
 }
@@ -110,7 +133,7 @@ function renderMessages() {
   container.innerHTML = messages.map(m => {
     let extra = '';
     if (m.citations && m.citations.length > 0) {
-      extra = '<div class="citation">📚 参考: ' + m.citations.map(c => c.title).join(', ') + '</div>';
+      extra = '<div class="citation">参考: ' + m.citations.map(c => c.title).join(', ') + '</div>';
     }
     return `<div class="msg ${m.role}">${m.text}${extra}</div>`;
   }).join('');
@@ -167,7 +190,7 @@ async function mockAgentResponse(userText) {
     if (response.citations?.length) {
       const citDiv = document.createElement('div');
       citDiv.className = 'citation';
-      citDiv.textContent = '📚 参考: ' + response.citations.map(c => c.title).join(', ');
+      citDiv.textContent = '参考: ' + response.citations.map(c => c.title).join(', ');
       fakeStream.appendChild(citDiv);
     }
     messages.push({ role: 'assistant', text: response.text, citations: response.citations, time: Date.now() });
