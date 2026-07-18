@@ -15,6 +15,7 @@ public class NavigationController {
     public ApiResponse<List<NavItem>> navigation() {
         var p = SecurityUtils.current();
         List<NavItem> items = new ArrayList<>();
+        items.add(new NavItem("handwriting", "笔迹观察", "/handwriting", "pen"));
         items.add(new NavItem("home", "首页", "/", "home"));
         if (p.permissions().contains("task:read")) items.add(new NavItem("tasks", "任务状态", "/tasks", "tasks"));
         if (p.permissions().contains("file:read")) items.add(new NavItem("files", "文件中心", "/files", "folder"));

@@ -1,5 +1,6 @@
 import { api, downloadFile, session } from './api.js';
 import { emptyState, escapeHtml, formatDate, pageHeader, skeleton, statusBadge, toast } from './components.js';
+import { bindHandwritingPage, handwritingPage } from './handwriting.js';
 
 const app = document.querySelector('#app');
 let navCache = null;
@@ -10,6 +11,7 @@ const routes = {
   '/files': filesPage,
   '/profile': profilePage,
   '/integration': integrationPage,
+  '/handwriting': handwritingPage,
   '/audit': auditPage,
 };
 
@@ -259,6 +261,7 @@ function bindPage(path) {
   if (path === '/files') bindFiles();
   if (path === '/profile') bindProfile();
   if (path === '/integration') bindIntegration();
+  if (path === '/handwriting') bindHandwritingPage();
 }
 
 function bindTasks() {

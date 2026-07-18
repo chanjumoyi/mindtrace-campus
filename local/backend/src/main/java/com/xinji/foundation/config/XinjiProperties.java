@@ -9,12 +9,14 @@ public class XinjiProperties {
     private final Auth auth = new Auth();
     private final Storage storage = new Storage();
     private final Agent agent = new Agent();
+    private final Handwriting handwriting = new Handwriting();
     private final Cors cors = new Cors();
     private final Demo demo = new Demo();
 
     public Auth getAuth() { return auth; }
     public Storage getStorage() { return storage; }
     public Agent getAgent() { return agent; }
+    public Handwriting getHandwriting() { return handwriting; }
     public Cors getCors() { return cors; }
     public Demo getDemo() { return demo; }
 
@@ -46,6 +48,15 @@ public class XinjiProperties {
         public void setMaxAttempts(int maxAttempts) { this.maxAttempts = maxAttempts; }
         public long getRetryBackoffMs() { return retryBackoffMs; }
         public void setRetryBackoffMs(long retryBackoffMs) { this.retryBackoffMs = retryBackoffMs; }
+    }
+
+    public static class Handwriting {
+        private String baseUrl = "http://localhost:8091";
+        private int timeoutMs = 30000;
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public int getTimeoutMs() { return timeoutMs; }
+        public void setTimeoutMs(int timeoutMs) { this.timeoutMs = timeoutMs; }
     }
 
     public static class Cors {

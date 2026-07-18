@@ -60,6 +60,9 @@ xinji:
     timeout-ms: ${APP_AGENT_TIMEOUT_MS:5000}
     max-attempts: ${APP_AGENT_MAX_ATTEMPTS:3}
     retry-backoff-ms: ${APP_AGENT_RETRY_BACKOFF_MS:200}
+  handwriting:
+    base-url: ${APP_HANDWRITING_BASE_URL:http://localhost:8091}
+    timeout-ms: ${APP_HANDWRITING_TIMEOUT_MS:30000}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8088}
   demo:

@@ -48,6 +48,10 @@ components:
       properties:
         requestId:
           type: string
+        includeLlm:
+          type: boolean
+          default: true
+          description: Generate a safe Qwen explanation; falls back to deterministic Mock when unavailable
         trace:
           $ref: "../schemas/handwriting-trace.schema.json"
     SuccessEnvelope:

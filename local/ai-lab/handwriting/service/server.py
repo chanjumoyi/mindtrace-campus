@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from analyzer import TraceValidationError, analyse_trace
+from llm import HandwritingLlmExplainer
 
 
 SERVICE_DIR = Path(__file__).resolve().parent
+LLM_EXPLAINER = HandwritingLlmExplainer()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -35,7 +37,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in ("/health", "/api/v1/health"):
-            self._json(200, {"status": "UP", "module": "handwriting", "version": "0.2.0"})
+            self._json(
+                200,
+                {"status": "UP", "module": "handwriting", "version": "0.3.0", "llm": LLM_EXPLAINER.health()},
+            )
             return
         if self.path == "/":
             self.path = "/demo.html"
@@ -55,6 +60,8 @@ class Handler(SimpleHTTPRequestHandler):
             request_id = request.get("requestId")
             trace = request.get("trace", request)
             result = analyse_trace(trace, request_id)
+            if request.get("includeLlm", True):
+                result["llmExplanation"] = LLM_EXPLAINER.explain(result)
             self._json(200, _envelope(True, "OK", "分析完成", result, result["requestId"]))
         except (TraceValidationError, json.JSONDecodeError, UnicodeDecodeError) as error:
             self._json(400, _envelope(False, "HANDWRITING_INVALID_TRACE", str(error), None, None))

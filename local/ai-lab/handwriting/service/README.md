@@ -7,10 +7,10 @@
 在项目根目录执行：
 
 ```powershell
-python local\ai-lab\handwriting\service\server.py --port 8090
+python local\ai-lab\handwriting\service\server.py --port 8091
 ```
 
-然后在电脑浏览器打开 `http://127.0.0.1:8090/`，选择采集器导出的 JSON 文件。
+然后在电脑浏览器打开 `http://127.0.0.1:8091/`，选择采集器导出的 JSON 文件。
 
 接口同时支持：
 

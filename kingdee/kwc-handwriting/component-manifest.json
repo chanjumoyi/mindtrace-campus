@@ -1,0 +1,15 @@
+{
+  "code": "xj_handwriting_analysis",
+  "name": "心迹AI笔迹观察",
+  "version": "0.2.0",
+  "owner": "A",
+  "entry": "src/handwriting-component.ts",
+  "properties": {
+    "moduleCode": { "type": "string", "default": "HANDWRITING", "required": true },
+    "recordId": { "type": "string", "required": false },
+    "readonly": { "type": "boolean", "default": false },
+    "apiBaseUrl": { "type": "string", "default": "/api/v1" },
+    "includeLlm": { "type": "boolean", "default": true }
+  },
+  "events": ["ready", "handwriting-analysis-completed", "error"]
+}

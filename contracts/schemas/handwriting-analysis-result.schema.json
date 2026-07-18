@@ -51,6 +51,25 @@
         },
         "additionalProperties": false
       }
+    },
+    "llmExplanation": {
+      "type": "object",
+      "required": ["status", "provider", "model", "summary", "explorationQuestions", "disclaimer"],
+      "properties": {
+        "status": { "enum": ["SUCCESS", "MOCK", "DEGRADED"] },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "summary": { "type": "string" },
+        "explorationQuestions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "type": "string" }
+        },
+        "disclaimer": { "type": "string" },
+        "degradationNote": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
