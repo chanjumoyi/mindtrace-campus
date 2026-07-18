@@ -1,15 +1,45 @@
-# OpenSpec planning & change artifacts
+# Local planning and assistant workspaces
 openspec/
-
-# Claude Code workspace files
 .claude/
+.codex/
 
+# Kingdee online-environment mirror kept outside normal Git changes
 cosmic/
 
-# Java build artifacts
+# Private research data and copyrighted derived material
+data/handwriting-private/
+references/private/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Java and Maven build artifacts
 target/
+**/target/
 *.class
 
-# 本地私人数据
-data/handwriting-private/
-references/
+# Python artifacts and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+venv/
+
+# Node.js dependencies
+node_modules/
+
+# Temporary files, logs, and coverage output
+tmp/
+temp/
+*.log
+coverage/
+.coverage
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
