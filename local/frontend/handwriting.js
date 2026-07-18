@@ -11,7 +11,7 @@ export async function handwritingPage() {
       <form id="handwriting-form" class="card section-card handwriting-uploader">
         <h2>1. 选择轨迹</h2>
         <div class="field"><label for="handwriting-file">采集器 JSON</label><input id="handwriting-file" type="file" accept="application/json,.json" required></div>
-        <label class="check-row"><input id="handwriting-llm" type="checkbox" checked> 使用 Qwen2.5-7B 生成克制的辅助说明；未配置时自动使用 Mock</label>
+        <label class="check-row"><input id="handwriting-llm" type="checkbox" checked> 使用已配置的 Qwen 生成克制的辅助说明；不可用时自动使用 Mock</label>
         <button id="handwriting-run" class="btn btn-primary" type="submit" disabled>开始分析</button>
         <p id="handwriting-file-meta" class="muted">尚未选择文件</p>
       </form>
@@ -69,6 +69,7 @@ export function bindHandwritingPage() {
 function renderResult(result) {
   const scores = result.stateScores || {};
   const pct = value => value == null ? '不可用' : `${(Number(value) * 100).toFixed(1)}%`;
+  const prediction = result.experimentalPrediction;
   const llm = result.llmExplanation;
   const llmHtml = llm ? `<section class="card section-card">
     <div class="inline"><h2>Qwen 辅助说明</h2><span class="badge badge-${llm.status === 'SUCCESS' ? 'succeeded' : 'pending'}">${escapeHtml(llm.provider)} / ${escapeHtml(llm.status)}</span></div>
@@ -83,6 +84,7 @@ function renderResult(result) {
       ${metric('设备压力指标', pct(scores.writingTension))}${metric('分析状态', result.status)}
     </div>
     <section class="card section-card"><h2>客观观察</h2><ul>${(result.observations || []).map(item => `<li><strong>${escapeHtml(item.feature)}</strong>：${escapeHtml(item.description)}</li>`).join('')}</ul></section>
+    ${prediction ? `<section class="card section-card"><div class="inline"><h2>小样本实验性拟合</h2><span class="badge badge-pending">${escapeHtml(prediction.status)} / ${escapeHtml(prediction.confidenceLevel)}</span></div><div class="grid handwriting-metrics">${Object.values(prediction.scores || {}).map(item => metric(item.label, `${Number(item.value).toFixed(2)} / 5`)).join('')}</div><p class="muted">${escapeHtml(prediction.warning || '')}</p></section>` : ''}
     ${llmHtml}
     <section class="card section-card"><h2>依据与限制</h2><ul>${(result.citations || []).map(item => `<li>${escapeHtml(item.sourceTitle)}，PDF 第 ${escapeHtml(item.pdfPage)} 页：${escapeHtml(item.usage)}</li>`).join('')}</ul><details><summary>查看全部限制</summary><ul>${(result.limitations || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></details></section>`;
 }

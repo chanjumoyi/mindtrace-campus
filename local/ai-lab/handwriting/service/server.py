@@ -9,11 +9,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from analyzer import TraceValidationError, analyse_trace
+from analyzer import BASELINE_PREDICTOR, TraceValidationError, analyse_trace
 from llm import HandwritingLlmExplainer
 
 
 SERVICE_DIR = Path(__file__).resolve().parent
+COLLECTOR_DIR = SERVICE_DIR.parent / "collector"
 LLM_EXPLAINER = HandwritingLlmExplainer()
 
 
@@ -36,10 +37,22 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(204, {})
 
     def do_GET(self) -> None:  # noqa: N802
+        if self.path in ("/collector", "/collector/"):
+            self.directory = str(COLLECTOR_DIR)
+            self.path = "/index.html"
+        elif self.path.startswith("/collector/"):
+            self.directory = str(COLLECTOR_DIR)
+            self.path = self.path.removeprefix("/collector")
         if self.path in ("/health", "/api/v1/health"):
             self._json(
                 200,
-                {"status": "UP", "module": "handwriting", "version": "0.3.0", "llm": LLM_EXPLAINER.health()},
+                {
+                    "status": "UP",
+                    "module": "handwriting",
+                    "version": "0.4.0",
+                    "llm": LLM_EXPLAINER.health(),
+                    "baseline": BASELINE_PREDICTOR.health(),
+                },
             )
             return
         if self.path == "/":

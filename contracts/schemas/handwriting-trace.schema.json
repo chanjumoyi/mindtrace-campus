@@ -32,9 +32,9 @@
       "type": "object",
       "required": ["stressLevel", "moodLevel", "sleepQuality", "note"],
       "properties": {
-        "stressLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "moodLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "sleepQuality": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "stressLevel": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "moodLevel": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "sleepQuality": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
         "note": { "type": "string", "maxLength": 120 }
       },
       "additionalProperties": false

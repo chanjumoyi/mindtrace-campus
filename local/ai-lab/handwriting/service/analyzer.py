@@ -19,11 +19,13 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from extract_handwriting_features import extract  # noqa: E402
+from baseline import HandwritingBaselinePredictor  # noqa: E402
 
 
 MODEL_VERSION = "handwriting-observation-v0.2-local"
 MIN_POINTS = 20
 MIN_STROKES = 3
+BASELINE_PREDICTOR = HandwritingBaselinePredictor()
 
 
 class TraceValidationError(ValueError):
@@ -154,11 +156,13 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
     ]
 
     status = "SUCCESS" if quality >= 0.6 else "INSUFFICIENT_DATA"
+    experimental_prediction = BASELINE_PREDICTOR.predict(features)
     limitations = [
         "所有指标仅描述本次书写行为，不代表人格、心理状态或医学诊断。",
         "速度使用浏览器像素计算，跨设备比较前必须进行物理尺寸和采样率校准。",
         "尚无同一参与者的个人基线，因此 change 字段为空，不进行状态变化推断。",
         "压力指标依赖设备真实压感，仅可在同一设备、同一任务内谨慎比较。",
+        experimental_prediction.get("warning"),
         *warnings,
     ]
     return {
@@ -171,8 +175,9 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
             "rhythmInstability": rhythm,
             "writingTension": tension,
         },
+        "experimentalPrediction": experimental_prediction,
         "confidence": _clamp(quality * 0.65),
-        "limitations": list(dict.fromkeys(limitations)),
+        "limitations": list(dict.fromkeys(item for item in limitations if item)),
         "modelVersion": MODEL_VERSION,
         "features": features,
         "citations": [

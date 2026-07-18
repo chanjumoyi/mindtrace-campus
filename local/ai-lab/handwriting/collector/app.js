@@ -288,10 +288,10 @@
         noticeVersion: "collector-notice-v1"
       },
       selfReport: {
-        stressLevel: Number(elements.stressLevel.value),
-        moodLevel: Number(elements.moodLevel.value),
-        sleepQuality: Number(elements.sleepQuality.value),
-        note: elements.note.value.trim()
+        stressLevel: window.MindLineCollectorResearchMode ? Number(elements.stressLevel.value) : null,
+        moodLevel: window.MindLineCollectorResearchMode ? Number(elements.moodLevel.value) : null,
+        sleepQuality: window.MindLineCollectorResearchMode ? Number(elements.sleepQuality.value) : null,
+        note: window.MindLineCollectorResearchMode ? elements.note.value.trim() : ""
       },
       device: {
         userAgent: navigator.userAgent,
@@ -481,6 +481,11 @@
       event.returnValue = "";
     }
   });
+
+  window.MindLineCollector = {
+    buildPayload: buildExportPayload,
+    isReady
+  };
 
   updatePrompt();
   updateUi();

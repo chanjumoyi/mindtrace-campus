@@ -29,10 +29,13 @@ services:
       dockerfile: local/ai-lab/handwriting/service/Dockerfile
     environment:
       HANDWRITING_LLM_MODE: ${HANDWRITING_LLM_MODE:-mock}
+      HANDWRITING_MODEL_PATH: /app/models/handwriting_ridge_v0.1.json
       QWEN_MODEL: ${QWEN_MODEL:-qwen2.5-7b-instruct}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-20}
+    volumes:
+      - ./data/handwriting-private/models:/app/models:ro
     ports:
       - "8091:8091"
 
