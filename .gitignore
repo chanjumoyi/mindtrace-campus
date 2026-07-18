@@ -1,5 +1,11 @@
-# Real handwriting data contains private research samples and must stay local.
-data/handwriting-private/
+# OpenSpec planning & change artifacts
+openspec/
 
-# Copyrighted reference books and private source material stay local.
-references/private/
+# Claude Code workspace files
+.claude/
+
+cosmic/
+
+# Java build artifacts
+target/
+*.class

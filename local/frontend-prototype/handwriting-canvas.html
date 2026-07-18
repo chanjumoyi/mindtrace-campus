@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>笔迹检测 - 心迹AI</title>
+<style>
+:root {
+  --ink: #18302b; --muted: #64756f; --paper: #fbfdfc;
+  --surface: #ffffff; --line: #dce7e2; --accent: #24745f;
+  --accent-dark: #175443; --accent-soft: #e5f2ed;
+  --danger: #a64545; --shadow: 0 18px 50px rgba(25, 56, 47, 0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(circle at 90% 4%, rgba(101,177,146,0.12), transparent 32rem), #f2f6f4;
+  color: var(--ink); display: flex; height: 100vh;
+}
+.main { flex: 1; display: flex; flex-direction: column; }
+.toolbar {
+  display: flex; gap: 10px; padding: 10px 20px;
+  background: rgba(255,255,255,.85); border-bottom: 1px solid var(--line);
+  align-items: center; flex-wrap: wrap; backdrop-filter: blur(8px);
+}
+.toolbar button {
+  min-height: 38px; padding: 6px 16px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--surface); cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--ink); transition: all .15s;
+}
+.toolbar button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.toolbar button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.toolbar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); margin-left: auto; }
+.toolbar button.primary:hover { background: var(--accent-dark); }
+.toolbar label { font-size: 12px; color: var(--muted); }
+.color-dot { display: inline-block; width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; border: 1px solid var(--line); cursor: pointer; margin: 0 2px; }
+.color-dot.selected { border: 2px solid var(--ink); }
+.canvas-wrap { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
+canvas {
+  border: 1px solid #cfddd7; border-radius: 18px; background: #fffefd;
+  background-image: linear-gradient(rgba(43,91,77,.055) 1px, transparent 1px);
+  background-size: 100% 44px;
+  box-shadow: var(--shadow); cursor: crosshair;
+}
+.sidebar {
+  width: 200px; background: var(--surface); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; padding: 16px; font-size: 12px;
+}
+.sidebar h4 { font-size: 13px; margin-bottom: 12px; color: var(--ink); }
+.stat-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.stat-label { color: var(--muted); }
+.stat-value { font-weight: 700; color: var(--ink); }
+.desc-area {
+  display: flex; gap: 8px; padding: 12px 20px;
+  background: rgba(255,255,255,.85); border-top: 1px solid var(--line);
+  align-items: center; backdrop-filter: blur(8px);
+}
+.desc-area textarea {
+  flex: 1; height: 40px; border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 12px; font-size: 12px; resize: none; font-family: inherit;
+  background: var(--paper); outline: none;
+}
+.desc-area textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.loading-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.85); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
+.loading-overlay.show { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="toolbar">
+    <span style="font-weight:700;color:var(--accent)">笔迹检测</span>
+    <span style="color:var(--line)">|</span>
+    <label>颜色:</label>
+    <span class="color-dot selected" style="background:#222" data-color="#222"></span>
+    <span class="color-dot" style="background:#24745f" data-color="#24745f"></span>
+    <span class="color-dot" style="background:#e8a838" data-color="#e8a838"></span>
+    <span class="color-dot" style="background:#5B9A3B" data-color="#5B9A3B"></span>
+    <label style="margin-left:8px">线宽:</label>
+    <input type="range" min="1" max="8" value="3" id="widthSlider" style="width:60px" accent-color="var(--accent)">
+    <button onclick="clearCanvas()">清除</button>
+    <button id="aiBtn" class="primary" onclick="openAIChat()">AI 助手</button>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="hwCanvas" width="700" height="500"></canvas>
+  </div>
+  <div class="desc-area">
+    <span style="font-size:12px;color:#666"></span>
+    <textarea id="descInput" maxlength="300" placeholder="描述你的书写感受（可选）..."></textarea>
+    <span id="charCount" style="font-size:11px;color:#aaa">0/300</span>
+    <button onclick="saveAndAnalyze()" class="primary">保存分析</button>
+  </div>
+</div>
+<div class="sidebar" id="sidebar">
+  <h4>实时特征</h4>
+  <div class="stat-row"><span class="stat-label">笔划数</span><span class="stat-value" id="stStrokeCount">0</span></div>
+  <div class="stat-row"><span class="stat-label">总点数</span><span class="stat-value" id="stPointCount">0</span></div>
+  <div class="stat-row"><span class="stat-label">平均速度</span><span class="stat-value" id="stAvgSpeed">-</span></div>
+  <div class="stat-row"><span class="stat-label">停顿次数</span><span class="stat-value" id="stPauseCount">0</span></div>
+  <div class="stat-row"><span class="stat-label">轨迹范围</span><span class="stat-value" id="stBounds">-</span></div>
+  <div class="stat-row"><span class="stat-label">书写密度</span><span class="stat-value" id="stDensity">-</span></div>
+</div>
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p style="margin-top:12px;color:#666">正在分析笔迹...</p>
+</div>
+
+<script>
+// ===== 笔迹状态 =====
+const canvas = document.getElementById('hwCanvas');
+const ctx = canvas.getContext('2d');
+let strokes = [];           // [{points:[{x,y,t}], color, width}]
+let currentStroke = null;
+let isDrawing = false;
+let penColor = '#222222';
+let penWidth = 3;
+
+// ===== 绘制引擎 =====
+function redrawAll() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const s of strokes) {
+    drawStroke(s);
+  }
+  if (currentStroke) drawStroke(currentStroke);
+}
+function drawStroke(s) {
+  if (s.points.length < 2) return;
+  ctx.beginPath();
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth = s.width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.moveTo(s.points[0].x, s.points[0].y);
+  for (let i = 1; i < s.points.length; i++) {
+    ctx.lineTo(s.points[i].x, s.points[i].y);
+  }
+  ctx.stroke();
+}
+
+// ===== 事件处理 =====
+canvas.addEventListener('pointerdown', e => {
+  isDrawing = true;
+  currentStroke = { points: [], color: penColor, width: penWidth };
+  addPoint(e);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!isDrawing) return;
+  addPoint(e);
+  redrawAll();
+});
+canvas.addEventListener('pointerup', () => {
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (currentStroke && currentStroke.points.length > 0) {
+    strokes.push(currentStroke);
+  }
+  currentStroke = null;
+  updateStats();
+});
+canvas.addEventListener('pointerleave', () => {
+  if (isDrawing) {
+    isDrawing = false;
+    if (currentStroke && currentStroke.points.length > 0) strokes.push(currentStroke);
+    currentStroke = null;
+    updateStats();
+  }
+});
+function addPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  currentStroke.points.push({
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+    t: Date.now()
+  });
+}
+
+// ===== 工具栏 =====
+document.querySelectorAll('.color-dot').forEach(dot => {
+  dot.addEventListener('click', () => {
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+    dot.classList.add('selected');
+    penColor = dot.dataset.color;
+  });
+});
+document.getElementById('widthSlider').addEventListener('input', e => {
+  penWidth = parseInt(e.target.value);
+});
+function clearCanvas() {
+  if (strokes.length > 0 && !confirm('确定清除所有笔迹？')) return;
+  strokes = [];
+  currentStroke = null;
+  redrawAll();
+  updateStats();
+}
+
+// ===== 特征计算 =====
+function computeFeatures() {
+  const allPoints = strokes.flatMap(s => s.points);
+  if (allPoints.length === 0) return null;
+
+  // 笔划数
+  const strokeCount = strokes.length;
+
+  // 总点数
+  const pointCount = allPoints.length;
+
+  // 平均速度 (px/s)
+  let totalDist = 0, totalTime = 0;
+  for (const s of strokes) {
+    for (let i = 1; i < s.points.length; i++) {
+      const dx = s.points[i].x - s.points[i-1].x;
+      const dy = s.points[i].y - s.points[i-1].y;
+      const dt = (s.points[i].t - s.points[i-1].t) / 1000;
+      totalDist += Math.sqrt(dx*dx + dy*dy);
+      totalTime += dt;
+    }
+  }
+  const avgSpeed = totalTime > 0 ? Math.round(totalDist / totalTime) : 0;
+
+  // 停顿次数 (>500ms between strokes)
+  let pauseCount = 0;
+  for (let i = 1; i < strokes.length; i++) {
+    const prevEnd = strokes[i-1].points[strokes[i-1].points.length-1];
+    const currStart = strokes[i].points[0];
+    if (prevEnd && currStart && (currStart.t - prevEnd.t) > 500) pauseCount++;
+  }
+
+  // 边界框
+  const xs = allPoints.map(p => p.x);
+  const ys = allPoints.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const boundsW = Math.round(maxX - minX);
+  const boundsH = Math.round(maxY - minY);
+
+  // 密度 = 总点数 / 边界框面积 (每万平方像素)
+  const area = boundsW * boundsH;
+  const density = area > 0 ? Math.round(pointCount / (area / 10000) * 10) / 10 : 0;
+
+  return { strokeCount, pointCount, avgSpeed, pauseCount, boundsW, boundsH, density };
+}
+function updateStats() {
+  const f = computeFeatures();
+  document.getElementById('stStrokeCount').textContent = f ? f.strokeCount : 0;
+  document.getElementById('stPointCount').textContent = f ? f.pointCount : 0;
+  document.getElementById('stAvgSpeed').textContent = f ? f.avgSpeed + ' px/s' : '-';
+  document.getElementById('stPauseCount').textContent = f ? f.pauseCount : 0;
+  document.getElementById('stBounds').textContent = f ? f.boundsW + '×' + f.boundsH : '-';
+  document.getElementById('stDensity').textContent = f ? f.density + ' /万px²' : '-';
+}
+
+// ===== 序列化 & 分析 =====
+function serializeHandwriting() {
+  const features = computeFeatures();
+  return {
+    strokes: strokes.map(s => ({
+      color: s.color,
+      width: s.width,
+      pointCount: s.points.length,
+      points: s.points.map(p => ({ x: Math.round(p.x*10)/10, y: Math.round(p.y*10)/10, t: p.t }))
+    })),
+    features,
+    userDescription: document.getElementById('descInput').value.trim()
+  };
+}
+async function saveAndAnalyze() {
+  if (strokes.length === 0) { alert('请先在画布上书写'); return; }
+  document.getElementById('loadingOverlay').classList.add('show');
+  const data = serializeHandwriting();
+  console.log('笔迹分析提交:', JSON.stringify(data, null, 2));
+  await new Promise(r => setTimeout(r, 1500));
+  document.getElementById('loadingOverlay').classList.remove('show');
+  alert('笔迹分析完成（本地原型 — API尚未连接）\n\n请在控制台查看提交的数据');
+}
+
+// ===== AI 助手 =====
+function openAIChat() {
+  const data = serializeHandwriting();
+  // 存储上下文供 ai-chat-widget 读取
+  window._handwritingContext = {
+    page: 'handwriting',
+    strokeCount: data.features?.strokeCount || 0,
+    avgSpeed: data.features?.avgSpeed || 0,
+    pauseCount: data.features?.pauseCount || 0,
+    boundsW: data.features?.boundsW || 0,
+    boundsH: data.features?.boundsH || 0,
+    density: data.features?.density || 0,
+    description: data.userDescription || ''
+  };
+  window.open('ai-chat-widget.html', 'aiChat', 'width=420,height=600,left=100,top=100');
+}
+
+document.getElementById('descInput').addEventListener('input', e => {
+  document.getElementById('charCount').textContent = e.target.value.length + '/300';
+});
+
+redrawAll();
+console.log('笔迹检测Canvas原型已就绪 — 心迹AI 角色B');
+</script>
+</body>
+</html>
