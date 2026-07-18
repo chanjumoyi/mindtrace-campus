@@ -9,3 +9,7 @@ cosmic/
 # Java build artifacts
 target/
 *.class
+
+# 本地私人数据
+data/handwriting-private/
+references/
