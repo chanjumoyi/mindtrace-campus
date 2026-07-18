@@ -1,88 +1,73 @@
 openapi: "3.0.3"
 info:
-  title: 心迹AI - 笔迹分析接口
-  description: 笔迹检测模块分析API，接收手写轨迹数据进行特征提取和Agent分析
-  version: "1.0.0"
+  title: MindLine Handwriting Analysis API
+  description: Accepts the complete JSON trace exported by the handwriting collector and returns explainable behavioural observations. It must not be used for diagnosis or personality inference.
+  version: "2.0.0"
+
+servers:
+  - url: /api/v1
+    description: Local development and Kingdee gateway path
 
 paths:
   /handwriting/analyze:
     post:
       operationId: analyzeHandwriting
-      summary: 分析笔迹
+      summary: Analyse an online handwriting trace
       tags: [Handwriting]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [sessionId, strokes]
-              properties:
-                sessionId:
-                  type: string
-                strokes:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      color: { type: string }
-                      width: { type: number }
-                      points:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            x: { type: number }
-                            y: { type: number }
-                            t: { type: integer }
-                userDescription:
-                  type: string
-                  maxLength: 300
+              $ref: "#/components/schemas/HandwritingAnalysisRequest"
       responses:
         "200":
-          description: 分析成功
+          description: Analysis completed; inspect data.status for data sufficiency
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  analysisId: { type: string }
-                  features:
-                    type: object
-                    properties:
-                      strokeCount: { type: integer }
-                      totalPoints: { type: integer }
-                      avgSpeedPxPerSec: { type: number }
-                      pauseCount: { type: integer }
-                      boundWidth: { type: number }
-                      boundHeight: { type: number }
-                      densityPer10kPx: { type: number }
-                  agentAnalysis:
-                    type: object
-                    properties:
-                      featureSummary: { type: string }
-                      observations: { type: string }
-                      explorationQuestions:
-                        type: array
-                        items: { type: string }
-                      disclaimer: { type: string }
-                  citations:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        docId: { type: string }
-                        title: { type: string }
+                $ref: "#/components/schemas/SuccessEnvelope"
         "400":
-          description: 空画布
+          description: Invalid or insufficient trace structure
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Analysis service failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   schemas:
-    Error:
+    HandwritingAnalysisRequest:
       type: object
+      required: [trace]
       properties:
+        requestId:
+          type: string
+        trace:
+          $ref: "../schemas/handwriting-trace.schema.json"
+    SuccessEnvelope:
+      type: object
+      required: [success, code, message, data, requestId, timestamp]
+      properties:
+        success: { type: boolean, enum: [true] }
+        code: { type: string, example: "OK" }
+        message: { type: string }
+        data:
+          $ref: "../schemas/handwriting-analysis-result.schema.json"
+        requestId: { type: string }
+        timestamp: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [success, code, message, timestamp]
+      properties:
+        success: { type: boolean, enum: [false] }
         code: { type: string }
         message: { type: string }
+        data: { nullable: true }
+        requestId: { type: string, nullable: true }
+        timestamp: { type: string, format: date-time }
