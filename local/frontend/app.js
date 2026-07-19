@@ -343,7 +343,7 @@ function bindIntegration() {
       <div class="modal-actions"><button class="btn modal-close" type="button">取消</button><button class="btn btn-primary" type="submit">保存</button></div>
     </form>`,modal=>modal.querySelector('#module-form').addEventListener('submit',async event=>{
       event.preventDefault();const button=event.submitter;setBusy(button,true);try{const f=new FormData(event.currentTarget);const moduleCode=f.get('moduleCode');const body=Object.fromEntries(f);body.enabled=f.get('enabled')==='on';delete body.moduleCode;await api(`/modules/${moduleCode}`,{method:'PUT',body:JSON.stringify(body)});closeModal();toast('模块配置已保存','success');render();}catch(e){showError(e);setBusy(button,false);}
-    }))));
+    })));
   document.querySelector('#agent-test-btn')?.addEventListener('click',async event=>{
     const button=event.currentTarget;setBusy(button,true,'调用中…');const result=document.querySelector('#agent-result');result.textContent='';
     try{const operation=document.querySelector('#agent-operation').value;const data=await api('/ai/invoke',{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({moduleCode:'COMMON',operation,input:{message:'C infrastructure check'},timeoutMs:5000})});result.textContent=JSON.stringify(data,null,2);toast('调用完成','success');}catch(e){result.textContent=`${e.code||'ERROR'}: ${e.message}`;showError(e);}finally{setBusy(button,false);}
