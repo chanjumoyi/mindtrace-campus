@@ -1,0 +1,16 @@
+{
+  "name": "@xinji/kwc-common",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "心迹AI苍穹 KWC 公共组件、Host Adapter 与 API Client",
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "package": "npm run test && python3 scripts/package.py"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

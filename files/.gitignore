@@ -1,0 +1,54 @@
+# Local planning and assistant workspaces
+openspec/
+.claude/
+.codex/
+
+# Kingdee online-environment mirror kept outside normal Git changes
+cosmic/
+
+# Private research data and copyrighted derived material
+data/handwriting-private/
+references/private/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Java and Maven build artifacts
+target/
+**/target/
+*.class
+
+# Python artifacts and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+venv/
+
+# Node.js dependencies
+node_modules/
+
+# Temporary files, logs, and coverage output
+tmp/
+temp/
+*.log
+coverage/
+.coverage
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Kingdee tenant-local facts, native exports, and generated release archives
+kingdee/deployment/environment.local.yaml
+kingdee/deployment/tenant-native-assets/*
+!kingdee/deployment/tenant-native-assets/README.md
+deliverables/package/xinji-c-delivery-*.zip
+deliverables/package/xinji-kwc-common-*.zip
+kingdee/kwc-common/dist/
+deliverables/test-report/c-*.json

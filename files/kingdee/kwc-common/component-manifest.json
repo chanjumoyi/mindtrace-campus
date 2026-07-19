@@ -1,0 +1,22 @@
+{
+  "code": "xj_common_shell",
+  "name": "心迹AI公共外壳",
+  "version": "1.0.0",
+  "owner": "C",
+  "moduleFormat": "esm",
+  "entry": "index.js",
+  "styles": ["theme.css"],
+  "integrity": "checksums.sha256",
+  "properties": {
+    "moduleCode": {"type": "string", "required": true},
+    "recordId": {"type": "string", "required": false},
+    "readonly": {"type": "boolean", "default": false},
+    "apiBaseUrl": {"type": "string", "required": true}
+  },
+  "events": ["ready", "navigate", "error", "task-updated"],
+  "security": {
+    "storesModelSecrets": false,
+    "storesRawSensitiveLogs": false,
+    "requiresHostIdentity": true
+  }
+}
