@@ -65,7 +65,9 @@ class HandwritingLlmExplainer:
                 }
             )
             return result
-        except (ValueError, KeyError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        # Any upstream transport or response-shape failure must not discard the
+        # already-computed local analysis. Keep the public error detail generic.
+        except Exception as error:
             return self._mock(analysis, "DEGRADED", f"Qwen 调用失败，已安全降级：{type(error).__name__}")
 
     def _call_qwen(self, analysis: dict[str, Any]) -> dict[str, Any]:

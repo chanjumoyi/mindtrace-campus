@@ -27,6 +27,19 @@ class HandwritingLlmTest(unittest.TestCase):
         self.assertEqual(result["provider"], "mock")
         self.assertIn("未配置", result["degradationNote"])
 
+    def test_unexpected_qwen_response_error_degrades_safely(self) -> None:
+        class MalformedResponseExplainer(HandwritingLlmExplainer):
+            def _call_qwen(self, analysis):
+                raise TypeError("unexpected upstream response shape")
+
+        explainer = MalformedResponseExplainer(
+            LlmConfig("qwen", "test-key", "https://example.invalid/v1", "qwen3.6-flash", 1)
+        )
+        result = explainer.explain({"observations": []})
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertEqual(result["provider"], "mock")
+        self.assertIn("TypeError", result["degradationNote"])
+
 
 if __name__ == "__main__":
     unittest.main()
