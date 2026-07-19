@@ -35,6 +35,7 @@
   };
 
   const ctx = elements.canvas.getContext("2d", { alpha: true });
+  const pointer = window.MindLinePointer;
   let state = createState();
   let activePointerId = null;
   let timerFrame = null;
@@ -55,6 +56,10 @@
       observedPointerTypes: new Set(),
       pressureObserved: false,
       tiltObserved: false,
+      pressureValues: [],
+      lastPressure: null,
+      lastTiltX: null,
+      lastTiltY: null,
       imported: false
     };
   }
@@ -86,11 +91,6 @@
     };
   }
 
-  function normalizePressure(event) {
-    if (event.pointerType !== "pen") return null;
-    return Number.isFinite(event.pressure) ? round(event.pressure, 4) : null;
-  }
-
   function recordEvent(event, phase) {
     const events = typeof event.getCoalescedEvents === "function"
       ? event.getCoalescedEvents()
@@ -98,20 +98,23 @@
 
     for (const sample of events.length ? events : [event]) {
       const position = toCanvasPoint(sample);
-      const pressure = normalizePressure(sample);
+      const pointerType = pointer.pointerType(sample, event);
+      const pressureValue = pointer.pressure(sample, event);
+      const pressure = pressureValue === null ? null : round(pressureValue, 4);
+      const tilt = pointer.tilt(sample, event);
       const point = {
         strokeId: state.currentStroke.id,
         sequence: ++state.sequence,
         phase,
-        pointerType: sample.pointerType || event.pointerType || "unknown",
+        pointerType,
         timestampEpochMs: Date.now(),
         elapsedMs: Math.max(0, Math.round(performance.now() - state.sessionStartEpochMs)),
         ...position,
         pressure,
-        tiltX: pointNumber(sample.tiltX),
-        tiltY: pointNumber(sample.tiltY),
+        tiltX: pointNumber(tilt.x),
+        tiltY: pointNumber(tilt.y),
         twist: pointNumber(sample.twist),
-        tangentialPressure: sample.pointerType === "pen" ? pointNumber(sample.tangentialPressure, 4) : null,
+        tangentialPressure: pointerType === "pen" ? pointNumber(sample.tangentialPressure, 4) : null,
         contactWidth: pointNumber(sample.width),
         contactHeight: pointNumber(sample.height)
       };
@@ -119,8 +122,18 @@
       state.points.push(point);
       state.currentStroke.points.push(point);
       state.observedPointerTypes.add(point.pointerType);
-      if (pressure !== null && pressure > 0 && pressure !== 0.5) state.pressureObserved = true;
-      if ((point.tiltX ?? 0) !== 0 || (point.tiltY ?? 0) !== 0) state.tiltObserved = true;
+      if (pressure !== null && pressure > 0) {
+        state.lastPressure = pressure;
+        state.pressureValues.push(pressure);
+        if (state.pressureValues.length > 200) state.pressureValues.shift();
+        const pressureRange = Math.max(...state.pressureValues) - Math.min(...state.pressureValues);
+        if (pressure !== 0.5 || pressureRange >= 0.01) state.pressureObserved = true;
+      }
+      if (point.tiltX !== null && point.tiltY !== null) {
+        state.lastTiltX = point.tiltX;
+        state.lastTiltY = point.tiltY;
+        if (pointerType === "pen" && (point.tiltX !== 0 || point.tiltY !== 0)) state.tiltObserved = true;
+      }
       drawLatestSegment(state.currentStroke.points);
     }
     updateUi();
@@ -256,6 +269,10 @@
     state.observedPointerTypes.clear();
     state.pressureObserved = false;
     state.tiltObserved = false;
+    state.pressureValues = [];
+    state.lastPressure = null;
+    state.lastTiltX = null;
+    state.lastTiltY = null;
     cancelAnimationFrame(timerFrame);
     elements.timer.textContent = "00:00.0";
     redrawAll();
@@ -375,8 +392,17 @@
         state.points.push(point);
         state.sequence = Math.max(state.sequence, Number(point.sequence) || 0);
         state.observedPointerTypes.add(point.pointerType || "unknown");
-        if (point.pressure !== null && point.pressure > 0 && point.pressure !== 0.5) state.pressureObserved = true;
-        if ((point.tiltX ?? 0) !== 0 || (point.tiltY ?? 0) !== 0) state.tiltObserved = true;
+        if (Number.isFinite(point.pressure) && point.pressure > 0) {
+          state.lastPressure = point.pressure;
+          state.pressureValues.push(point.pressure);
+          const pressureRange = Math.max(...state.pressureValues) - Math.min(...state.pressureValues);
+          if (point.pressure !== 0.5 || pressureRange >= 0.01) state.pressureObserved = true;
+        }
+        if (Number.isFinite(point.tiltX) && Number.isFinite(point.tiltY) && point.pointerType === "pen") {
+          state.lastTiltX = point.tiltX;
+          state.lastTiltY = point.tiltY;
+          state.tiltObserved = true;
+        }
       }
       state.strokes = [...strokeMap.values()].sort((a, b) => a.id - b.id);
       updateUi();
@@ -398,8 +424,8 @@
     elements.placeholder.classList.toggle("hidden", hasConsent || state.points.length > 0);
     elements.canvas.style.pointerEvents = hasConsent ? "auto" : "none";
     elements.pointerType.textContent = state.observedPointerTypes.size ? [...state.observedPointerTypes].join(" / ") : "等待检测";
-    elements.pressure.textContent = state.pressureObserved ? "已检测" : (state.points.length ? "未检测" : "等待检测");
-    elements.tilt.textContent = state.tiltObserved ? "已检测" : (state.points.length ? "未检测" : "等待检测");
+    elements.pressure.textContent = pressureStatus();
+    elements.tilt.textContent = tiltStatus();
     elements.pointCount.textContent = String(state.points.length);
     elements.strokeCount.textContent = String(state.strokes.length);
     elements.undo.disabled = !state.strokes.length;
@@ -421,6 +447,18 @@
 
   function isReady() {
     return elements.consent.checked && state.points.length >= 20 && state.strokes.length >= 3;
+  }
+
+  function pressureStatus() {
+    if (state.lastPressure === null) return state.points.length ? "未检测" : "等待检测";
+    const value = `${Math.round(state.lastPressure * 100)}%`;
+    return state.pressureObserved ? `已检测 ${value}` : `固定值 ${value}`;
+  }
+
+  function tiltStatus() {
+    if (state.lastTiltX === null || state.lastTiltY === null) return state.points.length ? "未检测" : "等待检测";
+    const value = `X ${Math.round(state.lastTiltX)}° / Y ${Math.round(state.lastTiltY)}°`;
+    return state.tiltObserved ? `已检测 ${value}` : `固定值 ${value}`;
   }
 
   function downloadBlob(blob, filename) {
