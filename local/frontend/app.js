@@ -1,12 +1,20 @@
 import { api, downloadFile, session } from './api.js';
 import { emptyState, escapeHtml, formatDate, pageHeader, skeleton, statusBadge, toast } from './components.js';
 import { bindHandwritingPage, handwritingPage } from './handwriting.js';
+import {
+  assistantPage, bindAssistantPage, bindHandwritingLivePage, bindHtpPage, bindSandplayPage,
+  bindStudioHomePage, handwritingLivePage, htpPage, sandplayPage, studioHomePage
+} from './studio.js';
 
 const app = document.querySelector('#app');
 let navCache = null;
 
 const routes = {
-  '/': homePage,
+  '/': studioHomePage,
+  '/handwriting-live': handwritingLivePage,
+  '/sandplay': sandplayPage,
+  '/htp': htpPage,
+  '/assistant': assistantPage,
   '/tasks': tasksPage,
   '/files': filesPage,
   '/profile': profilePage,
@@ -69,9 +77,9 @@ function renderLogin() {
     <main class="login-shell">
       <section class="login-brand">
         <div class="brand"><span class="brand-mark"></span>心迹AI</div>
-        <h1>公共基础与苍穹集成</h1>
-        <p>C 负责人交付：公共页面、统一 Java 网关、PostgreSQL 公共模型、RBAC、审计、任务状态、文件管理、AI 调用治理、Mock Agent 与部署适配。</p>
-        <div class="scope-note"><strong>明确边界：</strong>本控制台不实现笔迹、房树人、沙盘算法或对应业务页面，仅提供 A/B 模块的接入底座。</div>
+        <h1>多模态心理辅助与智能陪伴平台</h1>
+        <p>统一整合动态笔迹、心理沙盘、房树人、AI 陪伴、行动任务与公共数据底座。</p>
+        <div class="scope-note"><strong>使用说明：</strong>所有分析仅用于客观观察和自我探索，不构成心理评估、人格判断或医学诊断。</div>
       </section>
       <section class="login-card-wrap">
         <form id="login-form" class="card login-card">
@@ -111,7 +119,17 @@ function renderLogin() {
 }
 
 function shellHtml(path, content) {
-  const nav = (navCache || []).map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
+  const productItems = [
+    { path: '/', label: '综合首页' },
+    { path: '/handwriting-live', label: '动态笔迹书写' },
+    { path: '/handwriting', label: '轨迹分析报告' },
+    { path: '/sandplay', label: '心理沙盘' },
+    { path: '/htp', label: '房树人 HTP' },
+    { path: '/assistant', label: 'AI陪伴助手' }
+  ];
+  const productNav = productItems.map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
+  const managementNav = (navCache || []).filter(item => !['/', '/handwriting'].includes(item.path)).map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
+  const nav = `<div class="nav-section-label">体验工作台</div>${productNav}<div class="nav-section-label">管理与集成</div>${managementNav}`;
   const roles = (session.user?.roles || []).join(' / ');
   return `
     <div class="app-shell">
@@ -124,7 +142,7 @@ function shellHtml(path, content) {
         </div>
       </aside>
       <div class="main">
-        <header class="topbar"><strong>公共基础控制台</strong><span class="muted">C · v1.0.0</span></header>
+        <header class="topbar"><strong>心迹AI 综合工作台</strong><span class="muted">MindLine · v1.1.0</span></header>
         <main id="page-content">${content}</main>
       </div>
     </div>`;
@@ -158,7 +176,7 @@ async function homePage() {
       <div class="grid">${modules.map(moduleCard).join('') || emptyState('暂无模块')}</div>
     </section>
     <section class="section card section-card">
-      <h2>C 的交付边界</h2>
+      <h2>统一工程底座</h2>
       <p>公共框架 + 数据底座 + 苍穹适配 + 系统集成。HANDWRITING 归 A，MULTIMODAL_AGENT 归 B；这里只显示注册与健康状态。</p>
     </section>
   </div>`;
@@ -257,6 +275,11 @@ async function notFoundPage() {
 }
 
 function bindPage(path) {
+  if (path === '/') bindStudioHomePage();
+  if (path === '/handwriting-live') bindHandwritingLivePage();
+  if (path === '/sandplay') bindSandplayPage();
+  if (path === '/htp') bindHtpPage();
+  if (path === '/assistant') bindAssistantPage();
   if (path === '/tasks') bindTasks();
   if (path === '/files') bindFiles();
   if (path === '/profile') bindProfile();

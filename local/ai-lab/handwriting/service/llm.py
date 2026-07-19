@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from http.client import RemoteDisconnected
 from typing import Any
 
 
@@ -22,6 +24,7 @@ class LlmConfig:
     base_url: str
     model: str
     timeout_seconds: int
+    max_attempts: int = 3
 
     @classmethod
     def from_env(cls) -> "LlmConfig":
@@ -33,6 +36,7 @@ class LlmConfig:
             ).strip(),
             model=os.getenv("QWEN_MODEL", "qwen2.5-7b-instruct").strip(),
             timeout_seconds=int(os.getenv("QWEN_TIMEOUT_SECONDS", "20")),
+            max_attempts=max(1, min(5, int(os.getenv("QWEN_MAX_ATTEMPTS", "3")))),
         )
 
 
@@ -47,6 +51,7 @@ class HandwritingLlmExplainer:
             "provider": "qwen" if self.config.mode == "qwen" else "mock",
             "model": self.config.model if self.config.mode == "qwen" else "deterministic-mock",
             "configured": configured if self.config.mode == "qwen" else True,
+            "maxAttempts": self.config.max_attempts,
         }
 
     def explain(self, analysis: dict[str, Any]) -> dict[str, Any]:
@@ -55,7 +60,7 @@ class HandwritingLlmExplainer:
         if not self.config.api_key or not self.config.base_url:
             return self._mock(analysis, "DEGRADED", "Qwen 未配置 API Key 或 Base URL，已安全降级。")
         try:
-            result = self._call_qwen(analysis)
+            result = self._call_qwen_with_retry(analysis)
             result.update(
                 {
                     "status": "SUCCESS",
@@ -68,7 +73,32 @@ class HandwritingLlmExplainer:
         # Any upstream transport or response-shape failure must not discard the
         # already-computed local analysis. Keep the public error detail generic.
         except Exception as error:
-            return self._mock(analysis, "DEGRADED", f"Qwen 调用失败，已安全降级：{type(error).__name__}")
+            detail = self._safe_error_detail(error)
+            return self._mock(
+                analysis,
+                "DEGRADED",
+                f"Qwen 调用失败，已安全降级：{detail}（最多尝试 {self.config.max_attempts} 次）",
+            )
+
+    def _call_qwen_with_retry(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        for attempt in range(1, self.config.max_attempts + 1):
+            try:
+                return self._call_qwen(analysis)
+            except urllib.error.HTTPError as error:
+                retryable = error.code == 429 or error.code >= 500
+                if not retryable or attempt == self.config.max_attempts:
+                    raise
+            except (RemoteDisconnected, ConnectionError, TimeoutError, urllib.error.URLError):
+                if attempt == self.config.max_attempts:
+                    raise
+            time.sleep(0.35 * attempt)
+        raise RuntimeError("Qwen retry loop exhausted")
+
+    @staticmethod
+    def _safe_error_detail(error: Exception) -> str:
+        if isinstance(error, urllib.error.HTTPError):
+            return f"HTTP {error.code}"
+        return type(error).__name__
 
     def _call_qwen(self, analysis: dict[str, Any]) -> dict[str, Any]:
         evidence = {
@@ -108,6 +138,9 @@ class HandwritingLlmExplainer:
             headers={
                 "Authorization": f"Bearer {self.config.api_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Connection": "close",
+                "User-Agent": "MindLine-Handwriting/0.4",
             },
             method="POST",
         )
