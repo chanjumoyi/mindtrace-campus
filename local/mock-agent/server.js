@@ -30,7 +30,6 @@ function send(res, status, body) {
   const json = JSON.stringify(body);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(json),
     'cache-control': 'no-store',
   });
   res.end(json);
