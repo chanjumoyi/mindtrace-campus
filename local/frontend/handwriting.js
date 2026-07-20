@@ -79,6 +79,7 @@ function renderResult(result) {
   </section>` : '';
   document.querySelector('#handwriting-result').innerHTML = `
     <div class="grid handwriting-metrics">
+      ${metric('书写内容', result.writingContent || '未提供', true)}
       ${metric('数据质量', pct(result.dataQuality))}${metric('置信度上限', pct(result.confidence))}
       ${metric('停顿指标', pct(scores.hesitation))}${metric('节律波动指标', pct(scores.rhythmInstability))}
       ${metric('设备压力指标', pct(scores.writingTension))}${metric('分析状态', result.status)}
@@ -89,8 +90,8 @@ function renderResult(result) {
     <section class="card section-card"><h2>依据与限制</h2><ul>${(result.citations || []).map(item => `<li>${escapeHtml(item.sourceTitle)}，PDF 第 ${escapeHtml(item.pdfPage)} 页：${escapeHtml(item.usage)}</li>`).join('')}</ul><details><summary>查看全部限制</summary><ul>${(result.limitations || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></details></section>`;
 }
 
-function metric(label, value) {
-  return `<div class="card metric"><span class="muted">${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+function metric(label, value, wide = false) {
+  return `<div class="card metric${wide ? ' handwriting-content-metric' : ''}"><span class="muted">${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
 function drawTrace(canvas, points) {

@@ -3,10 +3,14 @@
   "$id": "https://mindline.example/schemas/handwriting-analysis-result.schema.json",
   "title": "MindLine handwriting analysis result",
   "type": "object",
-  "required": ["requestId", "status", "dataQuality", "observations", "stateScores", "confidence", "limitations", "modelVersion"],
+  "required": ["requestId", "status", "writingContent", "dataQuality", "observations", "stateScores", "confidence", "limitations", "modelVersion"],
   "properties": {
     "requestId": { "type": "string" },
     "status": { "enum": ["SUCCESS", "INSUFFICIENT_DATA", "FAILED"] },
+    "writingContent": {
+      "type": "string",
+      "description": "The task text shown to the writer. This is trace metadata, not OCR output."
+    },
     "dataQuality": { "type": "number", "minimum": 0, "maximum": 1 },
     "observations": {
       "type": "array",
