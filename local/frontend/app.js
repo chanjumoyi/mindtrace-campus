@@ -128,8 +128,7 @@ function shellHtml(path, content) {
     { path: '/assistant', label: 'AI陪伴助手' }
   ];
   const productNav = productItems.map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
-  const managementNav = (navCache || []).filter(item => !['/', '/handwriting'].includes(item.path)).map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
-  const nav = `<div class="nav-section-label">体验工作台</div>${productNav}<div class="nav-section-label">管理与集成</div>${managementNav}`;
+  const nav = `<div class="nav-section-label">体验工作台</div>${productNav}`;
   const roles = (session.user?.roles || []).join(' / ');
   return `
     <div class="app-shell">
