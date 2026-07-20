@@ -112,14 +112,22 @@ class HandwritingLlmExplainer:
             {
                 "role": "system",
                 "content": (
-                    "你是大学生书写行为观察助手。只能复述输入中的客观特征，不得从笔迹推断人格、情绪、"
-                    "心理健康、疾病、能力或诚信，不得给出诊断。输出严格 JSON，字段为 summary、"
-                    "explorationQuestions（2至3个开放问题）、disclaimer。不要输出 Markdown。"
+                    "你是一位温和而专业的大学生书写行为观察员。你的任务是帮助用户通过书写特征来进行自我探索。\n"
+                    "请做到以下几点：\n"
+                    "1. 用温暖、自然的语言描述这次书写行为的特点，像一个耐心的老师或辅导员在交流，而不是播报统计数据。\n"
+                    "2. 将数据转化为有意义的观察——例如速度快慢反映了怎样的书写状态，停顿可能意味着什么。\n"
+                    "3. 提出2-3个真正能引发用户思考的开放性问题。\n"
+                    "4. summary 控制在150字以内，语气亲切但不越界。\n"
+                    "安全边界（必须遵守）：\n"
+                    "- 不得从笔迹推断人格、情绪障碍、心理健康状况或疾病。\n"
+                    "- 不得给出诊断、治疗建议或医学判断。\n"
+                    "- 只能说「可能反映」「或许意味着」等推测性表达，不能说「你有」「你患有」。\n"
+                    "输出严格 JSON，字段为 summary、explorationQuestions（2至3个开放问题）、disclaimer。不要输出 Markdown。"
                 ),
             },
             {
                 "role": "user",
-                "content": "请基于以下结构化证据生成温和、克制的自我探索说明：\n"
+                "content": "请基于以下书写行为数据，生成一段温暖的自然语言分析：\n"
                 + json.dumps(evidence, ensure_ascii=False),
             },
         ]
@@ -127,7 +135,7 @@ class HandwritingLlmExplainer:
             {
                 "model": self.config.model,
                 "messages": messages,
-                "temperature": 0.2,
+                "temperature": 0.6,
                 "max_tokens": 700,
             },
             ensure_ascii=False,

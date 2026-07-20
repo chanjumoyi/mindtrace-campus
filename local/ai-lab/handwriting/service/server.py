@@ -64,10 +64,26 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(404, _envelope(False, "NOT_FOUND", "接口不存在", None, None))
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > 20 * 1024 * 1024:
-                raise TraceValidationError("请求体为空或超过 20MB 限制")
-            request = json.loads(self.rfile.read(length).decode("utf-8"))
+            cl = self.headers.get("Content-Length")
+            if cl:
+                length = int(cl)
+                if length > 20 * 1024 * 1024:
+                    raise TraceValidationError("请求体超过 20MB 限制")
+                raw = self.rfile.read(length)
+            else:
+                # chunked or connection-close — read until EOF
+                chunks = []
+                while True:
+                    chunk = self.rfile.read(8192)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    if sum(len(c) for c in chunks) > 20 * 1024 * 1024:
+                        raise TraceValidationError("请求体超过 20MB 限制")
+                raw = b"".join(chunks)
+            if not raw:
+                raise TraceValidationError("请求体为空")
+            request = json.loads(raw.decode("utf-8"))
             if not isinstance(request, dict):
                 raise TraceValidationError("请求体必须是 JSON 对象")
             request_id = request.get("requestId")

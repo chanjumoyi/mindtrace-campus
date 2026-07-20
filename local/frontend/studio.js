@@ -13,6 +13,7 @@ const assistantState = {
   messages: [{ role: 'assistant', text: '你好，我是心迹AI助手。你可以从笔迹、沙盘或房树人工作台带着结构化结果来继续探索。当前输出仅用于自我观察，不构成诊断。' }]
 };
 let htpPreviewUrl = '';
+window.__mindlineContexts = window.__mindlineContexts || {};
 
 export async function studioHomePage() {
   return `<div class="content studio-home">
@@ -171,7 +172,10 @@ async function analyzeSandplay(event) {
   const metrics = sandplayMetrics(); result.innerHTML = renderObservation('本地结构化观察', metrics.observations, '正在通过统一AI网关记录本次分析…');
   try {
     const gateway = await invokeGateway('sandplay.analyze', { elements: sandplayState.elements, metrics });
-    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway));
+    const aiSummary = extractGatewayText(gateway);
+    window.__mindlineContexts.sandplay = { elements: sandplayState.elements, metrics, aiSummary, time: new Date().toLocaleString() };
+    const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
+    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway)) + extra;
   } catch (error) { result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, `AI网关暂不可用：${escapeHtml(error.message)}。本地观察仍然有效。`); }
   finally { setButtonBusy(button, false); }
 }
@@ -195,8 +199,11 @@ async function analyzeHtp(event) {
     const metadata = await imageMetadata(file); const upload = new FormData(); upload.append('file', file);
     const saved = await api('/files?moduleCode=MULTIMODAL_AGENT&sensitivityLevel=L2', { method:'POST', body:upload }); const fields = Object.fromEntries(new FormData(form)); delete fields.file; delete fields.consent;
     const gateway = await invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields });
+    const aiSummary = extractGatewayText(gateway);
+    window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, time: new Date().toLocaleString() };
     const observations = [`已保存匿名作品：${file.name}（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
-    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway)); toast('作品已保存并形成观察记录', 'success');
+    const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
+    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway)) + extra; toast('作品已保存并形成观察记录', 'success');
   } catch (error) { result.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`; toast(error.message, 'error'); }
   finally { setButtonBusy(button, false); }
 }
@@ -205,7 +212,8 @@ async function sendAssistantMessage(message) {
   assistantState.messages.push({ role:'user', text:message }); renderAssistantMessages();
   const placeholder = { role:'assistant', text:'正在通过统一AI网关整理…', pending:true }; assistantState.messages.push(placeholder); renderAssistantMessages();
   try {
-    const gateway = await invokeGateway('companion.chat', { message, history:assistantState.messages.filter(item => !item.pending).slice(-8) });
+    const contexts = window.__mindlineContexts || {};
+    const gateway = await invokeGateway('companion.chat', { message, history:assistantState.messages.filter(item => !item.pending).slice(-8), moduleContexts: Object.keys(contexts).length ? contexts : undefined });
     placeholder.text = extractGatewayText(gateway) || '当前真实陪伴Agent尚未配置，但统一网关已收到请求。你可以尝试描述一个具体情境、当时的感受和希望采取的小行动。';
   } catch (error) { placeholder.text = `AI网关暂不可用。先把问题缩小一点：在“${message.slice(0,40)}”这件事里，你最想先处理哪一个部分？`; }
   placeholder.pending = false; renderAssistantMessages();

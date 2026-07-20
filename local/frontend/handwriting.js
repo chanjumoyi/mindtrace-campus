@@ -56,6 +56,17 @@ export function bindHandwritingPage() {
         body: JSON.stringify({ trace: selectedTrace, includeLlm: document.querySelector('#handwriting-llm').checked })
       });
       renderResult(result);
+      window.__mindlineContexts = window.__mindlineContexts || {};
+      window.__mindlineContexts.handwriting = {
+        participantId: selectedTrace.participantId || '匿名',
+        taskType: selectedTrace.task?.type || '未知',
+        pointCount: selectedTrace.points?.length || 0,
+        writingContent: result.writingContent,
+        dataQuality: result.dataQuality,
+        observations: result.observations?.slice(0, 5).map(o => o.description) || [],
+        llmSummary: result.llmExplanation?.summary || '',
+        time: new Date().toLocaleString()
+      };
       toast('笔迹分析完成', 'success');
     } catch (error) {
       document.querySelector('#handwriting-result').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
