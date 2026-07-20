@@ -82,6 +82,7 @@
         <span class="model-badge ${llmClass}">${escapeHtml(llm.provider || "未调用")} / ${escapeHtml(llm.status || "无结果")}</span>
       </div>
       <div class="analysis-metrics">
+        ${metric("书写内容", data.writingContent || "未提供", true)}
         ${metric("数据质量", percent(data.dataQuality))}
         ${metric("结果置信度上限", percent(data.confidence))}
         ${metric("分析状态", data.status)}
@@ -117,8 +118,8 @@
     return value == null ? "不可用" : `${(Number(value) * 100).toFixed(1)}%`;
   }
 
-  function metric(label, value) {
-    return `<div class="analysis-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+  function metric(label, value, wide = false) {
+    return `<div class="analysis-metric${wide ? ' analysis-content-metric' : ''}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
   }
 
   function escapeHtml(value) {

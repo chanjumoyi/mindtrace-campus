@@ -20,6 +20,7 @@ class HandwritingServiceTest(unittest.TestCase):
         result = analyse_trace(self_test_payload(), "req-test")
         self.assertEqual(result["requestId"], "req-test")
         self.assertEqual(result["status"], "SUCCESS")
+        self.assertEqual(result["writingContent"], self_test_payload()["task"]["promptText"])
         self.assertGreaterEqual(result["dataQuality"], 0.6)
         self.assertEqual(len(result["observations"]), 4)
         self.assertIn("stateScores", result)

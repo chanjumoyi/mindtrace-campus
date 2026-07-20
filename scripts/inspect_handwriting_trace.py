@@ -213,7 +213,11 @@ def self_test_payload() -> dict[str, Any]:
         "schemaVersion": "1.0.0",
         "sessionId": "self-test",
         "participantId": "synthetic",
-        "task": {"type": "copy_text"},
+        "task": {
+            "type": "copy_text",
+            "promptId": "self-test-copy",
+            "promptText": "Today, steady practice becomes tomorrow's confidence.",
+        },
         "device": {},
         "canvas": {},
         "timing": {},

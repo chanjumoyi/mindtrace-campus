@@ -48,6 +48,7 @@
     function render(data) {
       const scores = data.stateScores;
       $("metrics").innerHTML = [
+        ["书写内容", data.writingContent || "未提供"],
         ["数据质量", pct(data.dataQuality)], ["结果置信度", pct(data.confidence)],
         ["停顿指标", pct(scores.hesitation)], ["节律波动指标", pct(scores.rhythmInstability)],
         ["设备压力指标", pct(scores.writingTension)], ["状态", data.status]

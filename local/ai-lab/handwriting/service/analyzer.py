@@ -105,6 +105,8 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
     features = extract(trace, points)
     quality, warnings = _quality(trace, points, features)
     request_id = request_id or str(uuid.uuid4())
+    task = trace.get("task") if isinstance(trace.get("task"), dict) else {}
+    writing_content = str(task.get("promptText") or "").strip()
 
     timing = features["timing"]
     speed = features["kinematics"]["speedPxPerSecond"]
@@ -168,6 +170,7 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
     return {
         "requestId": request_id,
         "status": status,
+        "writingContent": writing_content,
         "dataQuality": quality,
         "observations": observations,
         "stateScores": {
