@@ -20,7 +20,7 @@ services:
       context: ./local/mock-agent
     environment:
       PORT: 8090
-      AGENT_LLM_MODE: ${AGENT_LLM_MODE:-qwen}
+      AGENT_LLM_MODE: ${AGENT_LLM_MODE:-mock}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen2.5-7b-instruct}

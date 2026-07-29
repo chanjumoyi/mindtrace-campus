@@ -56,11 +56,17 @@ try {
     if ($handwritingHealth.status -ne "UP" -or $null -eq $handwritingHealth.llm) {
         throw "Handwriting health response is incomplete."
     }
+    if ($handwritingHealth.llm.mode -eq "qwen" -and -not [bool]$handwritingHealth.llm.configured) {
+        throw "Handwriting service reports qwen mode without a configured API key."
+    }
     Write-Check ("Handwriting service is UP ({0}/{1})" -f $handwritingHealth.llm.provider, $handwritingHealth.llm.model)
 
     $agentHealth = Invoke-JsonRequest -Method Get -Uri $AgentHealthUrl
     if ($agentHealth.status -ne "UP" -or $null -eq $agentHealth.llm) {
         throw "AI companion health response is incomplete."
+    }
+    if ($agentHealth.llm.mode -eq "qwen" -and -not [bool]$agentHealth.llm.configured) {
+        throw "AI companion service reports qwen mode without a configured API key."
     }
     Write-Check ("AI companion service is UP ({0}/{1})" -f $agentHealth.llm.provider, $agentHealth.llm.model)
 
@@ -131,9 +137,42 @@ try {
     }
     Write-Check "AI gateway call and idempotency replay succeeded"
 
+    $analysisRef = "sandplay-smoke-" + [guid]::NewGuid().ToString("N")
+    $analysisTask = Invoke-JsonRequest -Method Post -Uri "$apiBaseUrl/tasks" -Headers $headers -Body @{
+        moduleCode = "MULTIMODAL_AGENT"
+        taskType = "SANDPLAY_ANALYSIS"
+        title = "Sandplay tracked-analysis smoke test"
+        requestRef = $analysisRef
+    }
+    $analysisTaskId = [string]$analysisTask.data.id
+    [void](Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
+        status = "RUNNING"
+        progress = 10
+    })
+    $analysisGateway = Invoke-JsonRequest -Method Post -Uri "$apiBaseUrl/ai/invoke" -Headers @{
+        Authorization = "Bearer $token"
+        "Idempotency-Key" = $analysisRef
+    } -Body @{
+        moduleCode = "MULTIMODAL_AGENT"
+        operation = "echo"
+        input = @{
+            requestedOperation = "sandplay.analyze"
+            elements = @(@{ type = "tree"; x = 50; y = 50 })
+        }
+    }
+    $analysisCompleted = Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
+        status = "SUCCEEDED"
+        progress = 100
+        resultRef = [string]$analysisGateway.data.callId
+    }
+    if ($analysisCompleted.data.status -ne "SUCCEEDED") {
+        throw "Tracked multimodal analysis task did not complete."
+    }
+    Write-Check "Sandplay analysis gateway and task tracking completed"
+
     Write-Host ""
     Write-Host "MindLine full-stack smoke test passed." -ForegroundColor Green
-    Write-Host "Note: one SMOKE_TEST task and related audit records were written to the local demo database." -ForegroundColor DarkGray
+    Write-Host "Note: smoke-test tasks and related audit records were written to the local demo database." -ForegroundColor DarkGray
 }
 catch {
     Write-Host ""

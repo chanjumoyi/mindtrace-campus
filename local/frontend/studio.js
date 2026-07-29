@@ -1,4 +1,5 @@
 import { api, session } from './api.js';
+import { runTrackedAnalysis } from './analysis-workflow.mjs';
 import { escapeHtml, pageHeader, toast } from './components.js';
 
 const SANDPLAY_ITEMS = [
@@ -171,12 +172,22 @@ async function analyzeSandplay(event) {
   setButtonBusy(button, true, '分析中…');
   const metrics = sandplayMetrics(); result.innerHTML = renderObservation('本地结构化观察', metrics.observations, '正在通过统一AI网关记录本次分析…');
   try {
-    const gateway = await invokeGateway('sandplay.analyze', { elements: sandplayState.elements, metrics });
+    const workflow = await runTrackedAnalysis({
+      api,
+      taskType: 'SANDPLAY_ANALYSIS',
+      title: '心理沙盘结构化观察',
+      requestRef: `sandplay:${crypto.randomUUID()}`,
+      invoke: () => invokeGateway('sandplay.analyze', { elements: sandplayState.elements, metrics })
+    });
+    const { gateway, task } = workflow;
     const aiSummary = extractGatewayText(gateway);
-    window.__mindlineContexts.sandplay = { elements: sandplayState.elements, metrics, aiSummary, time: new Date().toLocaleString() };
+    window.__mindlineContexts.sandplay = { elements: sandplayState.elements, metrics, aiSummary, taskId: task.id, time: new Date().toLocaleString() };
     const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
-    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway)) + extra;
-  } catch (error) { result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, `AI网关暂不可用：${escapeHtml(error.message)}。本地观察仍然有效。`); }
+    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway, task)) + extra;
+  } catch (error) {
+    const taskNote = error.taskId ? `失败任务 ${error.taskId} 已保留，可在任务状态页查看。` : '任务记录创建失败。';
+    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, `AI网关暂不可用：${escapeHtml(error.message)}。本地观察仍然有效。${taskNote}`);
+  }
   finally { setButtonBusy(button, false); }
 }
 
@@ -198,13 +209,24 @@ async function analyzeHtp(event) {
   try {
     const metadata = await imageMetadata(file); const upload = new FormData(); upload.append('file', file);
     const saved = await api('/files?moduleCode=MULTIMODAL_AGENT&sensitivityLevel=L2', { method:'POST', body:upload }); const fields = Object.fromEntries(new FormData(form)); delete fields.file; delete fields.consent;
-    const gateway = await invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields });
+    const workflow = await runTrackedAnalysis({
+      api,
+      taskType: 'HTP_ANALYSIS',
+      title: '房树人客观观察',
+      requestRef: `file:${saved.id}`,
+      invoke: () => invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields })
+    });
+    const { gateway, task } = workflow;
     const aiSummary = extractGatewayText(gateway);
-    window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, time: new Date().toLocaleString() };
+    window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, taskId: task.id, time: new Date().toLocaleString() };
     const observations = [`已保存匿名作品：${file.name}（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
     const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
-    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway)) + extra; toast('作品已保存并形成观察记录', 'success');
-  } catch (error) { result.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`; toast(error.message, 'error'); }
+    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway, task)) + extra; toast('作品已保存并形成观察记录', 'success');
+  } catch (error) {
+    const taskNote = error.taskId ? `失败任务 ${error.taskId} 已保留，可在任务状态页查看。` : '分析任务未创建。';
+    result.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div><p class="studio-result-note">${escapeHtml(taskNote)}</p>`;
+    toast(error.message, 'error');
+  }
   finally { setButtonBusy(button, false); }
 }
 
@@ -228,7 +250,13 @@ async function invokeGateway(requestedOperation, input) {
   return api('/ai/invoke', { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({ moduleCode:'MULTIMODAL_AGENT', operation:window.MINDLINE_AGENT_OPERATION || 'echo', input:{ requestedOperation, ...input }, timeoutMs:8000 }) });
 }
 
-function gatewayNote(gateway) { return gateway?.data?.mock || gateway?.data?.scope ? '已通过统一AI网关记录；当前连接的是基础设施 Mock，部署真实Agent后将自动替换生成说明。' : '已通过统一AI网关完成处理。'; }
+function gatewayNote(gateway, task) {
+  const taskNote = task?.id ? `任务 ${task.id} 已完成，可在任务状态页追踪。` : '';
+  const providerNote = gateway?.data?.mock || gateway?.data?.scope
+    ? '当前连接的是基础设施 Mock，部署真实Agent后将自动替换生成说明。'
+    : '已通过统一AI网关完成处理。';
+  return `${providerNote}${taskNote}`;
+}
 function extractGatewayText(gateway) {
   if (gateway?.data?.mock) return '';
   return gateway?.data?.output?.reply || gateway?.data?.output?.message || gateway?.output?.reply || '';
