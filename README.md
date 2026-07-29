@@ -19,48 +19,30 @@
 
 ## 快速开始
 
-### 1. 启动笔迹采集器
+### 1. Windows 一键启动完整工作台（推荐）
 
 在 Windows PowerShell 中运行：
 
 ```powershell
 Set-Location D:\project\mindLine
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_handwriting_collector.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_mindline.ps1
 ```
 
-脚本会输出电脑本机地址和供同一 Wi-Fi 下平板访问的地址。采集页面默认只接受触控笔输入；PC 调试模式需手动开启。
+脚本会启动 Docker Desktop（如尚未运行）、构建并启动全部服务、等待健康检查，并验证动态笔迹和 AI 陪伴两个服务都已切换到 Qwen 且凭证已注入。API Key 只写入当前 PowerShell 进程，不保存到项目文件。
 
-### 2. 启动前端原型
+不调用真实模型、只验证本地完整链路时：
 
 ```powershell
-Set-Location local\frontend-prototype
-python -m http.server 8082 --bind 127.0.0.1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_mindline.ps1 -LlmMode mock
 ```
 
-浏览器访问：
+启动成功后访问：
 
-- `http://127.0.0.1:8082/sandplay-canvas.html`
-- `http://127.0.0.1:8082/handwriting-canvas.html`
-- `http://127.0.0.1:8082/ai-chat-widget.html`
-
-### 3. 运行 Java 领域测试
-
-需要 JDK 17 和 Maven：
-
-```powershell
-Set-Location local\java-domain
-mvn test
-```
-
-### 4. 启动 Docker 全栈
-
-```powershell
-docker compose up -d
-```
-
-- 公共前端：`http://localhost:8088`
+- 综合工作台：`http://localhost:8088`
+- 动态笔迹测试：`http://localhost:8091/collector/`
 - 后端健康检查：`http://localhost:8080/actuator/health`
-- Mock Agent：`http://localhost:8090/health`
+- 笔迹服务健康检查：`http://localhost:8091/api/v1/health`
+- AI 陪伴服务健康检查：`http://localhost:8090/health`
 
 模拟账号：
 
@@ -68,7 +50,25 @@ docker compose up -d
 - `counselor_demo / demo123`
 - `admin_demo / admin123`
 
-关闭服务：
+### 2. 运行 Windows 全栈烟测
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\smoke_test.ps1
+```
+
+烟测会验证前端、四个服务健康状态、登录、个人资料、导航、任务状态机、AI 网关和幂等重放。每次运行会在本地演示数据库中新增一条 `SMOKE_TEST` 任务及相关审计记录。
+
+### 3. 单独启动笔迹采集器
+
+如只需要采集笔迹、不启动完整工作台：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_handwriting_collector.ps1
+```
+
+脚本会输出电脑本机地址和供同一 Wi-Fi 下平板访问的地址。采集页面默认只接受触控笔输入；PC 调试模式需手动开启。
+
+### 4. 停止完整工作台
 
 ```powershell
 docker compose down

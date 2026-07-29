@@ -71,13 +71,14 @@ function Start-DockerEngine {
 
 function Set-QwenEnvironment {
     $env:HANDWRITING_LLM_MODE = $LlmMode
+    $env:AGENT_LLM_MODE = $LlmMode
     $env:QWEN_MODEL = $QwenModel
     $env:QWEN_BASE_URL = $QwenBaseUrl.TrimEnd("/")
     $env:QWEN_TIMEOUT_SECONDS = "$QwenTimeoutSeconds"
     $env:QWEN_MAX_ATTEMPTS = "$QwenMaxAttempts"
 
     if ($LlmMode -eq "mock") {
-        Write-Host "Handwriting analysis mode: mock" -ForegroundColor Yellow
+        Write-Host "Handwriting and AI companion mode: mock" -ForegroundColor Yellow
         return
     }
 
@@ -92,8 +93,52 @@ function Set-QwenEnvironment {
         Remove-Variable plainKey
     }
 
-    Write-Host "Handwriting analysis mode: qwen ($QwenModel)" -ForegroundColor Green
+    Write-Host "Handwriting and AI companion mode: qwen ($QwenModel)" -ForegroundColor Green
     Write-Host "API Key is used only by this process and is not written to a file." -ForegroundColor DarkGray
+}
+
+function Confirm-LlmConfiguration {
+    Write-Step "Checking model configuration inside containers"
+
+    $checks = @(
+        @{
+            Name = "Handwriting service"
+            Url = "http://127.0.0.1:8091/api/v1/health"
+        },
+        @{
+            Name = "AI companion service"
+            Url = "http://127.0.0.1:8090/health"
+        }
+    )
+
+    foreach ($check in $checks) {
+        try {
+            $health = Invoke-RestMethod -Uri $check.Url -TimeoutSec 10
+        }
+        catch {
+            throw "$($check.Name) health response could not be read: $($_.Exception.Message)"
+        }
+
+        if ($null -eq $health.llm) {
+            throw "$($check.Name) health response does not include llm configuration."
+        }
+
+        $actualMode = [string]$health.llm.mode
+        $provider = [string]$health.llm.provider
+        $model = [string]$health.llm.model
+        $configured = [bool]$health.llm.configured
+        Write-Host ("[MODEL] {0}: mode={1}, provider={2}, model={3}, configured={4}" -f `
+            $check.Name, $actualMode, $provider, $model, $configured) -ForegroundColor Cyan
+
+        if ($LlmMode -eq "qwen") {
+            if ($actualMode -ne "qwen" -or $provider -ne "qwen" -or -not $configured) {
+                throw "$($check.Name) did not start with a configured Qwen provider. Recreate the service and check QWEN_API_KEY propagation."
+            }
+        }
+        elseif ($actualMode -ne "mock" -or $provider -ne "mock") {
+            throw "$($check.Name) did not start in mock mode as requested."
+        }
+    }
 }
 
 function Wait-MindLineServices {
@@ -172,6 +217,7 @@ try {
     }
 
     Wait-MindLineServices
+    Confirm-LlmConfiguration
 
     Write-Step "MindLine is ready"
     & docker compose -f $composeFile ps
