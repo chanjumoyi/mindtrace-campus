@@ -23,6 +23,13 @@ public class MoodCheckinController {
         return ApiResponse.ok(service.list(days, ownerUserId));
     }
 
+    @GetMapping("/trends")
+    @PreAuthorize("hasAuthority('mood:read')")
+    public ApiResponse<MoodCheckinService.TrendResult> trends(
+            @RequestParam(defaultValue = "7") @Min(1) @Max(90) int days) {
+        return ApiResponse.ok(service.trends(days));
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('mood:write')")
     public ApiResponse<MoodCheckinService.MoodCheckinView> create(@Valid @RequestBody CreateBody body) {
