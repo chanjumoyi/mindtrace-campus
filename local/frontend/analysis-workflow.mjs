@@ -13,6 +13,7 @@ function taskErrorCode(error) {
 export async function runTrackedAnalysis({
   api,
   invoke,
+  persist,
   taskType,
   title,
   requestRef,
@@ -39,7 +40,8 @@ export async function runTrackedAnalysis({
       body: JSON.stringify({ status: 'RUNNING', progress: 10 })
     });
     const gateway = await invoke();
-    const resultRef = String(gateway?.callId || gateway?.requestId || requestRef).slice(0, 200);
+    const record = typeof persist === 'function' ? await persist({ gateway, task }) : null;
+    const resultRef = String(record?.id || gateway?.callId || gateway?.requestId || requestRef).slice(0, 200);
     const completedTask = await api(taskPath, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -48,7 +50,7 @@ export async function runTrackedAnalysis({
         resultRef
       })
     });
-    return { gateway, task: completedTask };
+    return { gateway, task: completedTask, record };
   } catch (error) {
     try {
       await api(taskPath, {

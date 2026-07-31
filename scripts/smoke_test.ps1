@@ -18,7 +18,7 @@ function Write-Check {
 
 function Invoke-JsonRequest {
     param(
-        [ValidateSet("Get", "Post", "Patch")]
+        [ValidateSet("Get", "Post", "Patch", "Delete")]
         [string]$Method,
         [string]$Uri,
         [hashtable]$Headers = @{},
@@ -160,15 +160,33 @@ try {
             elements = @(@{ type = "tree"; x = 50; y = 50 })
         }
     }
-    $analysisCompleted = Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
+    $analysisRecord = Invoke-JsonRequest -Method Post -Uri "$apiBaseUrl/analysis-records" -Headers $headers -Body @{
+        moduleType = "SANDPLAY"
+        taskId = $analysisTaskId
+        sourceRef = $analysisRef
+        title = "Sandplay tracked-analysis smoke test"
+        observations = @("One centered tree element", "Smoke test stores no personal narrative")
+        features = @{ count = 1; centerRatio = 1.0; quadrants = @(0, 0, 0, 1) }
+        provider = [string]$agentHealth.llm.provider
+        model = [string]$agentHealth.llm.model
+        mockResult = ([string]$agentHealth.llm.provider -eq "mock")
+    }
+    $analysisRecordId = [string]$analysisRecord.data.id    $analysisCompleted = Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
         status = "SUCCEEDED"
         progress = 100
-        resultRef = [string]$analysisGateway.data.callId
+        resultRef = $analysisRecordId
     }
     if ($analysisCompleted.data.status -ne "SUCCEEDED") {
         throw "Tracked multimodal analysis task did not complete."
     }
     Write-Check "Sandplay analysis gateway and task tracking completed"
+    $storedRecord = Invoke-JsonRequest -Method Get -Uri "$apiBaseUrl/analysis-records/$analysisRecordId" -Headers $headers
+    if ($storedRecord.data.taskId -ne $analysisTaskId -or $storedRecord.data.observations.Count -lt 1) {
+        throw "Persisted analysis record could not be read back."
+    }
+    [void](Invoke-JsonRequest -Method Get -Uri "$apiBaseUrl/analysis-records?moduleType=SANDPLAY" -Headers $headers)
+    [void](Invoke-JsonRequest -Method Delete -Uri "$apiBaseUrl/analysis-records/$analysisRecordId" -Headers $headers)
+    Write-Check "Sandplay analysis record persisted, queried, and deleted"
 
     Write-Host ""
     Write-Host "MindLine full-stack smoke test passed." -ForegroundColor Green

@@ -99,3 +99,24 @@ test('running transition failure is converted into a failed tracked task', async
   assert.deepEqual(statuses, ['RUNNING', 'FAILED']);
   assert.equal(invoked, false);
 });
+test('persisted analysis record becomes the task result reference', async () => {
+  const transitions = [];
+  const api = async (path, options) => {
+    const body = JSON.parse(options.body);
+    if (path === '/tasks') return { id: 'task-5' };
+    transitions.push(body);
+    return { id: 'task-5', ...body };
+  };
+
+  const result = await runTrackedAnalysis({
+    api,
+    taskType: 'SANDPLAY_ANALYSIS',
+    title: '心理沙盘结构化观察',
+    requestRef: 'sandplay:test-5',
+    invoke: async () => ({ callId: 'call-5' }),
+    persist: async ({ task }) => ({ id: `record-for-${task.id}` })
+  });
+
+  assert.equal(result.record.id, 'record-for-task-5');
+  assert.equal(transitions.at(-1).resultRef, 'record-for-task-5');
+});

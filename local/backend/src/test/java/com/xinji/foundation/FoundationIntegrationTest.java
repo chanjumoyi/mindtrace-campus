@@ -128,6 +128,76 @@ class FoundationIntegrationTest {
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
+    @Test
+    void multimodalAnalysisRecordFollowsTaskOwnershipAndCanBeDeleted() throws Exception {
+        String token = login("student_demo", "demo123");
+        String taskBody = mvc.perform(post("/api/v1/tasks")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"moduleCode":"MULTIMODAL_AGENT","taskType":"SANDPLAY_ANALYSIS",
+                                 "title":"沙盘结构化观察","requestRef":"sandplay:test-record"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        String taskId = mapper.readTree(taskBody).path("data").path("id").asText();
+
+        mvc.perform(post("/api/v1/analysis-records")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"moduleType":"SANDPLAY","taskId":"%s","title":"沙盘结构化观察",
+                                 "observations":["共有1个元素","中心区域占比100%%"],
+                                 "features":{"count":1,"centerRatio":1.0},
+                                 "provider":"mock","model":"deterministic-mock","mockResult":true}
+                                """.formatted(taskId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE_TRANSITION"));
+
+        mvc.perform(patch("/api/v1/tasks/{id}/status", taskId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"RUNNING\",\"progress\":10}"))
+                .andExpect(status().isOk());
+
+        String recordBody = mvc.perform(post("/api/v1/analysis-records")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"moduleType":"SANDPLAY","taskId":"%s","sourceRef":"sandplay:test-record",
+                                 "title":"沙盘结构化观察","observations":["共有1个元素","中心区域占比100%%"],
+                                 "features":{"count":1,"centerRatio":1.0},
+                                 "aiSummary":"本地结构化观察","provider":"mock",
+                                 "model":"deterministic-mock","mockResult":true}
+                                """.formatted(taskId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.moduleType").value("SANDPLAY"))
+                .andExpect(jsonPath("$.data.observations[0]").value("共有1个元素"))
+                .andExpect(jsonPath("$.data.features.count").value(1))
+                .andExpect(jsonPath("$.data.mockResult").value(true))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        String recordId = mapper.readTree(recordBody).path("data").path("id").asText();
+
+        mvc.perform(patch("/api/v1/tasks/{id}/status", taskId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SUCCEEDED\",\"resultRef\":\"" + recordId + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resultRef").value(recordId));
+
+        mvc.perform(get("/api/v1/analysis-records")
+                        .param("moduleType", "SANDPLAY")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(recordId));
+
+        mvc.perform(delete("/api/v1/analysis-records/{id}", recordId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/analysis-records/{id}", recordId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
     private String login(String username, String password) throws Exception {
         String body = mvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

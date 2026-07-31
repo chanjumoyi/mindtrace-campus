@@ -63,6 +63,7 @@ export function bindHandwritingLivePage() {
 }
 
 export async function sandplayPage() {
+  const history = await loadAnalysisHistory('SANDPLAY');
   return `<div class="content studio-page">
     ${pageHeader('心理沙盘工作台', '自由摆放元素，系统只生成结构化布局观察。', '<button class="btn" id="sand-undo">撤销</button><button class="btn btn-danger" id="sand-clear">清空</button>')}
     <div class="scope-note"><strong>使用边界：</strong>元素选择和空间位置没有固定心理含义；任何说明都需要结合用户自己的叙述。</div>
@@ -73,6 +74,7 @@ export async function sandplayPage() {
         <section id="sand-result" class="studio-result" aria-live="polite"></section>
       </div>
     </section>
+    <section id="sand-history" class="section">${renderAnalysisHistory(history, 'SANDPLAY')}</section>
   </div>`;
 }
 
@@ -86,9 +88,11 @@ export function bindSandplayPage() {
   document.querySelector('#sand-undo')?.addEventListener('click', () => { sandplayState.elements.pop(); renderSandplay(); });
   document.querySelector('#sand-clear')?.addEventListener('click', () => { if (confirm('确定清空当前沙盘吗？')) { sandplayState.elements = []; renderSandplay(); } });
   document.querySelector('#sand-analyze')?.addEventListener('click', analyzeSandplay);
+  bindAnalysisHistory('sand-history', 'SANDPLAY');
 }
 
 export async function htpPage() {
+  const history = await loadAnalysisHistory('HTP');
   return `<div class="content studio-page">
     ${pageHeader('房树人 HTP 工作台', '上传作品并补充创作说明，生成可追溯的客观观察。')}
     <div class="scope-note"><strong>重要：</strong>房树人不能用于自动诊断。当前版本优先记录图像元数据和用户自述，视觉模型接入后仍必须遵循“观察与解释分离”。</div>
@@ -105,6 +109,7 @@ export async function htpPage() {
       </form>
       <div><section class="card htp-preview"><div id="htp-placeholder"><strong>作品预览</strong><p>选择文件后将在这里显示。</p></div><img id="htp-preview-image" alt="房树人作品预览" hidden></section><section id="htp-result" class="studio-result" aria-live="polite"></section></div>
     </section>
+    <section id="htp-history" class="section">${renderAnalysisHistory(history, 'HTP')}</section>
   </div>`;
 }
 
@@ -119,6 +124,7 @@ export function bindHtpPage() {
     document.querySelector('#htp-placeholder')?.setAttribute('hidden', '');
   });
   document.querySelector('#htp-form')?.addEventListener('submit', analyzeHtp);
+  bindAnalysisHistory('htp-history', 'HTP');
 }
 
 export async function assistantPage() {
@@ -172,18 +178,25 @@ async function analyzeSandplay(event) {
   setButtonBusy(button, true, '分析中…');
   const metrics = sandplayMetrics(); result.innerHTML = renderObservation('本地结构化观察', metrics.observations, '正在通过统一AI网关记录本次分析…');
   try {
+    const sourceRef = `sandplay:${crypto.randomUUID()}`;
     const workflow = await runTrackedAnalysis({
       api,
       taskType: 'SANDPLAY_ANALYSIS',
       title: '心理沙盘结构化观察',
-      requestRef: `sandplay:${crypto.randomUUID()}`,
-      invoke: () => invokeGateway('sandplay.analyze', { elements: sandplayState.elements, metrics })
+      requestRef: sourceRef,
+      invoke: () => invokeGateway('sandplay.analyze', { elements: sandplayState.elements, metrics }),
+      persist: ({ gateway, task }) => saveAnalysisRecord({
+        moduleType: 'SANDPLAY', taskId: task.id, sourceRef, title: '心理沙盘结构化观察',
+        observations: metrics.observations, features: sandplayFeatures(metrics),
+        aiSummary: extractGatewayText(gateway), ...gatewayMetadata(gateway)
+      })
     });
-    const { gateway, task } = workflow;
+    const { gateway, task, record } = workflow;
     const aiSummary = extractGatewayText(gateway);
-    window.__mindlineContexts.sandplay = { elements: sandplayState.elements, metrics, aiSummary, taskId: task.id, time: new Date().toLocaleString() };
+    window.__mindlineContexts.sandplay = { elements: sandplayState.elements, metrics, aiSummary, taskId: task.id, recordId: record.id, time: new Date().toLocaleString() };
     const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
-    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway, task)) + extra;
+    result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, gatewayNote(gateway, task, record)) + extra;
+    await refreshAnalysisHistory('sand-history', 'SANDPLAY');
   } catch (error) {
     const taskNote = error.taskId ? `失败任务 ${error.taskId} 已保留，可在任务状态页查看。` : '任务记录创建失败。';
     result.innerHTML = renderObservation('沙盘结构化观察', metrics.observations, `AI网关暂不可用：${escapeHtml(error.message)}。本地观察仍然有效。${taskNote}`);
@@ -209,19 +222,25 @@ async function analyzeHtp(event) {
   try {
     const metadata = await imageMetadata(file); const upload = new FormData(); upload.append('file', file);
     const saved = await api('/files?moduleCode=MULTIMODAL_AGENT&sensitivityLevel=L2', { method:'POST', body:upload }); const fields = Object.fromEntries(new FormData(form)); delete fields.file; delete fields.consent;
+    const observations = [`已保存匿名作品（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
     const workflow = await runTrackedAnalysis({
       api,
       taskType: 'HTP_ANALYSIS',
       title: '房树人客观观察',
       requestRef: `file:${saved.id}`,
-      invoke: () => invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields })
+      invoke: () => invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields }),
+      persist: ({ gateway, task }) => saveAnalysisRecord({
+        moduleType: 'HTP', taskId: task.id, sourceRef: `file:${saved.id}`, title: '房树人客观观察',
+        observations, features: htpFeatures(metadata, fields),
+        aiSummary: extractGatewayText(gateway), ...gatewayMetadata(gateway)
+      })
     });
-    const { gateway, task } = workflow;
+    const { gateway, task, record } = workflow;
     const aiSummary = extractGatewayText(gateway);
-    window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, taskId: task.id, time: new Date().toLocaleString() };
-    const observations = [`已保存匿名作品：${file.name}（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
+    window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, taskId: task.id, recordId: record.id, time: new Date().toLocaleString() };
     const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
-    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway, task)) + extra; toast('作品已保存并形成观察记录', 'success');
+    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway, task, record)) + extra; toast('作品已保存并形成观察记录', 'success');
+    await refreshAnalysisHistory('htp-history', 'HTP');
   } catch (error) {
     const taskNote = error.taskId ? `失败任务 ${error.taskId} 已保留，可在任务状态页查看。` : '分析任务未创建。';
     result.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div><p class="studio-result-note">${escapeHtml(taskNote)}</p>`;
@@ -246,16 +265,73 @@ function renderAssistantMessages() {
   root.innerHTML = assistantState.messages.map(item => `<article class="assistant-message ${item.role}${item.pending ? ' pending' : ''}"><span>${item.role === 'user' ? '你' : 'AI'}</span><p>${escapeHtml(item.text)}</p></article>`).join(''); root.scrollTop = root.scrollHeight;
 }
 
+async function saveAnalysisRecord(record) {
+  return api('/analysis-records', { method:'POST', body:JSON.stringify(record) });
+}
+
+async function loadAnalysisHistory(moduleType) {
+  try { return await api(`/analysis-records?moduleType=${encodeURIComponent(moduleType)}`); }
+  catch { return []; }
+}
+
+function renderAnalysisHistory(records, moduleType) {
+  const label = moduleType === 'SANDPLAY' ? '沙盘' : '房树人';
+  const rows = Array.isArray(records) ? records.slice(0, 12) : [];
+  return `<div class="studio-section-title"><div><span>历史记录</span><h2>${label}分析历史</h2></div><p>仅保存结构化观察和模型来源，可随时删除。</p></div>${rows.length ? `<div class="analysis-history-grid">${rows.map(record => `<article class="card analysis-history-card"><div class="inline"><strong>${escapeHtml(record.title)}</strong><span class="studio-pill">${escapeHtml(record.provider || (record.mockResult ? 'mock' : 'unknown'))}</span></div><small class="muted">${escapeHtml(new Date(record.createdAt).toLocaleString())} · 任务 ${escapeHtml(record.taskId)}</small><ul>${(record.observations || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>${record.aiSummary ? `<details><summary>AI 辅助摘要</summary><p>${escapeHtml(record.aiSummary)}</p></details>` : ''}<button class="btn btn-danger analysis-record-delete" data-id="${escapeHtml(record.id)}" type="button">删除记录</button></article>`).join('')}</div>` : `<div class="card section-card"><p class="muted">暂无${label}历史记录，完成一次分析后会显示在这里。</p></div>`}`;
+}
+
+function bindAnalysisHistory(rootId, moduleType) {
+  const root = document.querySelector(`#${rootId}`); if (!root) return;
+  root.querySelectorAll('.analysis-record-delete').forEach(button => button.addEventListener('click', async () => {
+    if (!confirm('确定删除这条分析记录吗？该操作会移除结构化观察和 AI 摘要。')) return;
+    setButtonBusy(button, true, '删除中…');
+    try { await api(`/analysis-records/${encodeURIComponent(button.dataset.id)}`, { method:'DELETE' }); await refreshAnalysisHistory(rootId, moduleType); toast('分析记录已删除', 'success'); }
+    catch (error) { toast(error.message, 'error'); setButtonBusy(button, false); }
+  }));
+}
+
+async function refreshAnalysisHistory(rootId, moduleType) {
+  const root = document.querySelector(`#${rootId}`); if (!root) return;
+  root.innerHTML = renderAnalysisHistory(await loadAnalysisHistory(moduleType), moduleType);
+  bindAnalysisHistory(rootId, moduleType);
+}
+
+function gatewayMetadata(gateway) {
+  const data = gateway?.data || gateway || {};
+  const mockResult = Boolean(data.mock || data.scope);
+  return {
+    provider: data.provider || (mockResult ? 'mock' : 'unknown'),
+    model: data.model || (mockResult ? 'deterministic-mock' : 'unknown'),
+    mockResult
+  };
+}
+
+function sandplayFeatures(metrics) {
+  return { count:metrics.count, categories:metrics.categories, quadrants:metrics.quadrants, centerRatio:metrics.centerRatio };
+}
+
+function htpFeatures(metadata, fields) {
+  return {
+    image:{ width:metadata.width, height:metadata.height, type:metadata.type, size:metadata.size },
+    questionnaire:{
+      storyLength:String(fields.story || '').length,
+      houseDescriptionProvided:Boolean(String(fields.houseDescription || '').trim()),
+      treeDescriptionProvided:Boolean(String(fields.treeDescription || '').trim()),
+      personDescriptionProvided:Boolean(String(fields.personDescription || '').trim())
+    }
+  };
+}
 async function invokeGateway(requestedOperation, input) {
   return api('/ai/invoke', { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({ moduleCode:'MULTIMODAL_AGENT', operation:window.MINDLINE_AGENT_OPERATION || 'echo', input:{ requestedOperation, ...input }, timeoutMs:8000 }) });
 }
 
-function gatewayNote(gateway, task) {
+function gatewayNote(gateway, task, record) {
   const taskNote = task?.id ? `任务 ${task.id} 已完成，可在任务状态页追踪。` : '';
+const recordNote = record?.id ? `记录 ${record.id} 已持久化。` : '';
   const providerNote = gateway?.data?.mock || gateway?.data?.scope
     ? '当前连接的是基础设施 Mock，部署真实Agent后将自动替换生成说明。'
     : '已通过统一AI网关完成处理。';
-  return `${providerNote}${taskNote}`;
+  return `${providerNote}${taskNote}${recordNote}`;
 }
 function extractGatewayText(gateway) {
   if (gateway?.data?.mock) return '';
