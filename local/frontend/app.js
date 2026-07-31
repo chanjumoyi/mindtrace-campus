@@ -15,6 +15,7 @@ const routes = {
   '/sandplay': sandplayPage,
   '/htp': htpPage,
   '/assistant': assistantPage,
+  '/mood': moodPage,
   '/tasks': tasksPage,
   '/files': filesPage,
   '/profile': profilePage,
@@ -127,6 +128,7 @@ function shellHtml(path, content) {
     { path: '/htp', label: '房树人 HTP' },
     { path: '/assistant', label: 'AI陪伴助手' }
   ];
+  if (hasPermission('mood:read')) productItems.splice(1, 0, { path: '/mood', label: '情绪打卡与趋势' });
   const productNav = productItems.map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
   const nav = `<div class="nav-section-label">体验工作台</div>${productNav}`;
   const roles = (session.user?.roles || []).join(' / ');
@@ -260,6 +262,42 @@ async function integrationPage() {
   </div>`;
 }
 
+async function moodPage() {
+  const records = await api('/mood-checkins?days=14');
+  const chronological = [...records].reverse();
+  const average = key => records.length ? (records.reduce((sum, item) => sum + Number(item[key]), 0) / records.length).toFixed(1) : '-';
+  const form = hasPermission('mood:write') ? `
+    <form id="mood-form" class="card section-card mood-form">
+      <div class="inline"><h2>此刻状态</h2><span class="studio-pill">仅自己可见</span></div>
+      <div class="mood-fields">
+        <div class="field"><label>心情（1 低落 — 5 愉悦）</label><input name="mood" type="range" min="1" max="5" value="3"><output id="mood-value">3</output></div>
+        <div class="field"><label>压力（1 轻松 — 5 很高）</label><input name="stress" type="range" min="1" max="5" value="3"><output id="stress-value">3</output></div>
+        <div class="field"><label>昨晚睡眠（小时）</label><input name="sleepHours" type="number" min="0" max="24" step="0.5" value="7" required></div>
+      </div>
+      <fieldset class="mood-tags"><legend>最近影响我的事情（可多选）</legend>
+        ${['学习','人际','家庭','睡眠','运动','社团'].map(tag => `<label><input type="checkbox" name="tags" value="${tag}"> ${tag}</label>`).join('')}
+      </fieldset>
+      <div class="inline"><button class="btn btn-primary" type="submit">完成今日打卡</button><span class="muted">不采集自由文本，不用于医学诊断。</span></div>
+    </form>` : `<div class="notice">当前角色仅可查看已授权的结构化趋势，不能代替学生填写打卡。</div>`;
+  return `<div class="content mood-page">
+    ${pageHeader('情绪打卡与趋势', '用轻量记录观察变化，单次分值不代表心理结论。')}
+    ${form}
+    <div class="grid mood-metrics">
+      <div class="card metric"><span class="muted">近14天打卡</span><strong>${records.length}</strong></div>
+      <div class="card metric"><span class="muted">平均心情</span><strong>${average('mood')}</strong></div>
+      <div class="card metric"><span class="muted">平均压力</span><strong>${average('stress')}</strong></div>
+      <div class="card metric"><span class="muted">平均睡眠</span><strong>${average('sleepHours')}<small> h</small></strong></div>
+    </div>
+    <section class="section card section-card"><h2>近14天变化</h2>
+      ${chronological.length ? `<div class="mood-chart">${chronological.map(item => `<article title="${formatDate(item.occurredAt)}">
+        <div class="mood-bars"><i class="mood-bar mood-bar-positive" style="height:${item.mood * 18}px"></i><i class="mood-bar mood-bar-stress" style="height:${item.stress * 18}px"></i></div>
+        <small>${new Date(item.occurredAt).toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'})}</small>
+      </article>`).join('')}</div><div class="mood-legend"><span><i class="positive"></i>心情</span><span><i class="stress"></i>压力</span></div>` : emptyState('还没有打卡记录', '完成第一次打卡后，这里会显示变化趋势。')}
+    </section>
+    ${records.length ? `<section class="section"><h2>最近记录</h2><div class="table-wrap"><table class="table"><thead><tr><th>时间</th><th>心情</th><th>压力</th><th>睡眠</th><th>标签</th></tr></thead><tbody>${records.map(item => `<tr><td>${formatDate(item.occurredAt)}</td><td>${item.mood}/5</td><td>${item.stress}/5</td><td>${item.sleepHours} h</td><td>${item.tags.map(escapeHtml).join('、') || '-'}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+  </div>`;
+}
+
 async function auditPage() {
   const page = await api('/audit-logs?page=0&size=50');
   const rows = page.content || [];
@@ -279,11 +317,37 @@ function bindPage(path) {
   if (path === '/sandplay') bindSandplayPage();
   if (path === '/htp') bindHtpPage();
   if (path === '/assistant') bindAssistantPage();
+  if (path === '/mood') bindMoodPage();
   if (path === '/tasks') bindTasks();
   if (path === '/files') bindFiles();
   if (path === '/profile') bindProfile();
   if (path === '/integration') bindIntegration();
   if (path === '/handwriting') bindHandwritingPage();
+}
+
+function bindMoodPage() {
+  const form = document.querySelector('#mood-form');
+  if (!form) return;
+  ['mood','stress'].forEach(name => {
+    const input = form.elements[name];
+    input?.addEventListener('input', () => { document.querySelector(`#${name}-value`).textContent = input.value; });
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.submitter;
+    setBusy(button, true, '保存中…');
+    try {
+      const data = new FormData(form);
+      await api('/mood-checkins', { method:'POST', body:JSON.stringify({
+        mood:Number(data.get('mood')), stress:Number(data.get('stress')),
+        sleepHours:Number(data.get('sleepHours')), tags:data.getAll('tags')
+      })});
+      toast('今日打卡已保存','success');
+      render();
+    } catch (error) {
+      showError(error); setBusy(button, false);
+    }
+  });
 }
 
 function bindTasks() {

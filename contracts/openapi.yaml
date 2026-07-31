@@ -12,6 +12,7 @@ security:
 tags:
   - name: Auth
   - name: Profile
+  - name: Mood
   - name: Task
   - name: File
   - name: Analysis Record
@@ -149,6 +150,31 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+  /mood-checkins:
+    get:
+      tags: [Mood]
+      summary: 查询当前用户的结构化情绪打卡趋势
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 90, default: 14 }
+        - name: ownerUserId
+          in: query
+          description: 仅 mood:read:all 权限可查询其他用户；传 * 返回全部授权记录
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Mood]
+      summary: 保存当前用户的最小结构化情绪打卡
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMoodCheckinRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
   /analysis-records:
     get:
       tags: [Analysis Record]
@@ -183,7 +209,8 @@ paths:
       summary: 删除结构化观察与 AI 摘要
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
-        '200': { $ref: '#/components/responses/Success' }  /modules:
+        '200': { $ref: '#/components/responses/Success' }
+  /modules:
     get:
       tags: [Module]
       summary: 查询 A/B/C 模块注册状态
@@ -283,6 +310,21 @@ components:
         resultRef: { type: [string, 'null'], maxLength: 200 }
         errorCode: { type: [string, 'null'], maxLength: 80 }
         errorMessage: { type: [string, 'null'], maxLength: 500 }
+    CreateMoodCheckinRequest:
+      type: object
+      required: [mood, stress, sleepHours]
+      properties:
+        mood: { type: integer, minimum: 1, maximum: 5 }
+        stress: { type: integer, minimum: 1, maximum: 5 }
+        sleepHours: { type: number, minimum: 0, maximum: 24 }
+        tags:
+          type: array
+          maxItems: 8
+          items: { type: string, minLength: 1, maxLength: 20 }
+        occurredAt:
+          type: [string, 'null']
+          format: date-time
+          description: 不能晚于当前时间；省略时由服务端记录当前时间
     CreateAnalysisRecordRequest:
       type: object
       required: [moduleType, taskId, title, observations]
@@ -303,7 +345,8 @@ components:
         aiSummary: { type: [string, 'null'], maxLength: 5000 }
         provider: { type: [string, 'null'], maxLength: 120 }
         model: { type: [string, 'null'], maxLength: 120 }
-        mockResult: { type: boolean, default: false }    ModuleUpsertRequest:
+        mockResult: { type: boolean, default: false }
+    ModuleUpsertRequest:
       type: object
       required: [moduleName, ownerCode, enabled, contractVersion]
       properties:
