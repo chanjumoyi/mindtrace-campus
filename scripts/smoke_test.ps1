@@ -171,7 +171,8 @@ try {
         model = [string]$agentHealth.llm.model
         mockResult = ([string]$agentHealth.llm.provider -eq "mock")
     }
-    $analysisRecordId = [string]$analysisRecord.data.id    $analysisCompleted = Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
+    $analysisRecordId = [string]$analysisRecord.data.id
+    $analysisCompleted = Invoke-JsonRequest -Method Patch -Uri "$apiBaseUrl/tasks/$analysisTaskId/status" -Headers $headers -Body @{
         status = "SUCCEEDED"
         progress = 100
         resultRef = $analysisRecordId

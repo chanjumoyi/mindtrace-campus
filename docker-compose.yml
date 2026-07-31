@@ -75,7 +75,7 @@ services:
     volumes:
       - app_storage:/app/storage
     ports:
-      - "8081:8080"
+      - "8080:8080"
 
   frontend:
     build:
@@ -83,7 +83,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8089:80"
+      - "8088:80"
 
 volumes:
   postgres_data:

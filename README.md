@@ -21,6 +21,13 @@
 
 ### 1. Windows 一键启动完整工作台（推荐）
 
+直接双击仓库根目录的 `run.cmd` 即可以 Mock 模式启动，无需配置模型密钥。命令行也可选择模式：
+
+```powershell
+.\run.cmd          # 本地 Mock，开箱即用
+.\run.cmd qwen     # 使用 Qwen，启动时安全输入 API Key
+```
+
 在 Windows PowerShell 中运行：
 
 ```powershell
