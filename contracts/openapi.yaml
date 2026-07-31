@@ -13,6 +13,7 @@ tags:
   - name: Auth
   - name: Profile
   - name: Mood
+  - name: Action Plan
   - name: Task
   - name: File
   - name: Analysis Record
@@ -175,6 +176,43 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/Error' }
+  /action-plans:
+    get:
+      tags: [Action Plan]
+      summary: 查询当前用户或授权范围内的行动计划
+      parameters:
+        - name: ownerUserId
+          in: query
+          description: 仅 plan:read:all 权限可查询其他用户；传 * 返回全部授权记录
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Action Plan]
+      summary: 创建包含一至八个小步骤的个人行动计划
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateActionPlanRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+  /action-plans/{planId}/items/{itemId}:
+    patch:
+      tags: [Action Plan]
+      summary: 更新自己计划中的行动项状态和简短反馈
+      parameters:
+        - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateActionPlanItemRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/Error' }
   /analysis-records:
     get:
       tags: [Analysis Record]
@@ -325,6 +363,32 @@ components:
           type: [string, 'null']
           format: date-time
           description: 不能晚于当前时间；省略时由服务端记录当前时间
+    CreateActionPlanRequest:
+      type: object
+      required: [title, items]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            required: [title]
+            properties:
+              title: { type: string, minLength: 1, maxLength: 120 }
+              scheduledOn:
+                type: [string, 'null']
+                format: date
+    UpdateActionPlanItemRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [PENDING, DONE] }
+        feedback: { type: [string, 'null'], maxLength: 280 }
+        scheduledOn:
+          type: [string, 'null']
+          format: date
     CreateAnalysisRecordRequest:
       type: object
       required: [moduleType, taskId, title, observations]

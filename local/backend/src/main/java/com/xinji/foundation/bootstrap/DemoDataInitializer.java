@@ -29,8 +29,8 @@ public class DemoDataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         Map<String, PermissionEntity> p = new LinkedHashMap<>();
         for (String[] item : PERMISSIONS) p.put(item[0], permission(item[0], item[1]));
-        RoleEntity student = role("STUDENT", "学生", p, Set.of("profile:read","profile:write","task:read","task:write","file:read","file:write","ai:invoke","ai:log:read","module:read","mood:read","mood:write"));
-        RoleEntity counselor = role("COUNSELOR", "咨询师/辅导员", p, Set.of("profile:read","profile:write","task:read","task:write","task:read:all","task:write:all","file:read","file:write","ai:invoke","ai:log:read","module:read","mood:read","mood:read:all"));
+        RoleEntity student = role("STUDENT", "学生", p, Set.of("profile:read","profile:write","task:read","task:write","file:read","file:write","ai:invoke","ai:log:read","module:read","mood:read","mood:write","plan:read","plan:write"));
+        RoleEntity counselor = role("COUNSELOR", "咨询师/辅导员", p, Set.of("profile:read","profile:write","task:read","task:write","task:read:all","task:write:all","file:read","file:write","ai:invoke","ai:log:read","module:read","mood:read","mood:read:all","plan:read","plan:read:all"));
         RoleEntity sysAdmin = role("SYS_ADMIN", "系统管理员", p, p.keySet());
         if (properties.getDemo().isEnabled()) {
             user("student_demo", properties.getDemo().getStudentPassword(), "模拟学生", "student@example.invalid", student);
@@ -67,6 +67,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         {"file:read","读取自己的文件"},{"file:write","管理自己的文件"},{"file:read:all","读取全部文件"},{"file:write:all","管理全部文件"},
         {"ai:invoke","调用AI统一网关"},{"ai:log:read","读取自己的AI调用日志"},{"ai:log:read:all","读取全部AI调用日志"},
         {"module:read","读取模块注册信息"},{"module:write","维护模块注册信息"},{"audit:read","读取审计日志"},
-        {"mood:read","读取自己的情绪打卡"},{"mood:write","创建自己的情绪打卡"},{"mood:read:all","按授权读取全部情绪打卡"}
+        {"mood:read","读取自己的情绪打卡"},{"mood:write","创建自己的情绪打卡"},{"mood:read:all","按授权读取全部情绪打卡"},
+        {"plan:read","读取自己的行动计划"},{"plan:write","管理自己的行动计划"},{"plan:read:all","按授权读取全部行动计划"}
     };
 }

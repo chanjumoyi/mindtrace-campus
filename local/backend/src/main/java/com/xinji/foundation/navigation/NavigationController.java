@@ -18,6 +18,7 @@ public class NavigationController {
         items.add(new NavItem("handwriting", "笔迹观察", "/handwriting", "pen"));
         items.add(new NavItem("home", "首页", "/", "home"));
         if (p.permissions().contains("mood:read")) items.add(new NavItem("mood", "情绪打卡", "/mood", "heart"));
+        if (p.permissions().contains("plan:read")) items.add(new NavItem("plans", "行动计划", "/plans", "check"));
         if (p.permissions().contains("task:read")) items.add(new NavItem("tasks", "任务状态", "/tasks", "tasks"));
         if (p.permissions().contains("file:read")) items.add(new NavItem("files", "文件中心", "/files", "folder"));
         items.add(new NavItem("profile", "个人中心", "/profile", "user"));

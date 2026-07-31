@@ -16,6 +16,7 @@ const routes = {
   '/htp': htpPage,
   '/assistant': assistantPage,
   '/mood': moodPage,
+  '/plans': actionPlansPage,
   '/tasks': tasksPage,
   '/files': filesPage,
   '/profile': profilePage,
@@ -129,6 +130,7 @@ function shellHtml(path, content) {
     { path: '/assistant', label: 'AI陪伴助手' }
   ];
   if (hasPermission('mood:read')) productItems.splice(1, 0, { path: '/mood', label: '情绪打卡与趋势' });
+  if (hasPermission('plan:read')) productItems.splice(2, 0, { path: '/plans', label: '我的行动计划' });
   const productNav = productItems.map(item => `<a class="${path === item.path ? 'active' : ''}" href="#${item.path}">${escapeHtml(item.label)}</a>`).join('');
   const nav = `<div class="nav-section-label">体验工作台</div>${productNav}`;
   const roles = (session.user?.roles || []).join(' / ');
@@ -298,6 +300,24 @@ async function moodPage() {
   </div>`;
 }
 
+async function actionPlansPage() {
+  const plans = await api(`/action-plans${hasPermission('plan:read:all') ? '?ownerUserId=*' : ''}`);
+  const form = hasPermission('plan:write') ? `<form id="action-plan-form" class="card section-card plan-form">
+    <div class="inline"><h2>新建小行动计划</h2><span class="studio-pill">自主计划</span></div>
+    <div class="field"><label>计划名称</label><input name="title" maxlength="120" placeholder="例如：这周让作息更稳定" required></div>
+    <div class="plan-create-items">${[0,1,2].map(index => `<div class="plan-create-row"><input name="itemTitle" maxlength="120" placeholder="${index ? `第${index + 1}步（可选）` : '第一步（必填）'}" ${index ? '' : 'required'}><input name="scheduledOn" type="date"></div>`).join('')}</div>
+    <div class="inline"><button class="btn btn-primary" type="submit">创建计划</button><span class="muted">从可在 5–20 分钟内完成的小行动开始。</span></div>
+  </form>` : `<div class="notice">当前角色只查看获授权的计划进度，不能代替学生完成行动。</div>`;
+  const cards = plans.map(plan => {
+    const done = plan.items.filter(item => item.status === 'DONE').length;
+    return `<article class="card section-card plan-card"><div class="inline"><div><h2>${escapeHtml(plan.title)}</h2><p class="muted">${done}/${plan.items.length} 项已完成 · ${formatDate(plan.updatedAt)}</p></div>${statusBadge(plan.status)}</div>
+      <div class="progress"><span style="width:${Math.round(done / plan.items.length * 100)}%"></span></div>
+      <div class="plan-items">${plan.items.map(item => `<div class="plan-item ${item.status === 'DONE' ? 'done' : ''}"><button class="plan-toggle" type="button" data-plan-id="${plan.id}" data-item-id="${item.id}" data-status="${item.status}" ${hasPermission('plan:write') ? '' : 'disabled'}>${item.status === 'DONE' ? '✓' : ''}</button><div><strong>${escapeHtml(item.title)}</strong><p>${item.scheduledOn ? `计划日期：${escapeHtml(item.scheduledOn)}` : '未设日期'}${item.feedback ? ` · 反馈：${escapeHtml(item.feedback)}` : ''}</p></div></div>`).join('')}</div>
+    </article>`;
+  }).join('');
+  return `<div class="content plan-page">${pageHeader('行动计划', '把支持建议拆成可执行的小步骤；完成情况不用于心理诊断。')}${form}<section class="section"><h2>${hasPermission('plan:read:all') ? '授权范围内的计划' : '我的计划'}</h2>${cards || emptyState('还没有行动计划', '创建一个包含 1–3 个小步骤的计划。')}</section></div>`;
+}
+
 async function auditPage() {
   const page = await api('/audit-logs?page=0&size=50');
   const rows = page.content || [];
@@ -318,6 +338,7 @@ function bindPage(path) {
   if (path === '/htp') bindHtpPage();
   if (path === '/assistant') bindAssistantPage();
   if (path === '/mood') bindMoodPage();
+  if (path === '/plans') bindActionPlansPage();
   if (path === '/tasks') bindTasks();
   if (path === '/files') bindFiles();
   if (path === '/profile') bindProfile();
@@ -348,6 +369,29 @@ function bindMoodPage() {
       showError(error); setBusy(button, false);
     }
   });
+}
+
+function bindActionPlansPage() {
+  document.querySelector('#action-plan-form')?.addEventListener('submit', async event => {
+    event.preventDefault(); const button = event.submitter; setBusy(button, true, '创建中…');
+    try {
+      const data = new FormData(event.currentTarget);
+      const titles = data.getAll('itemTitle'), dates = data.getAll('scheduledOn');
+      const items = titles.map((title,index) => ({title:title.trim(), scheduledOn:dates[index] || null})).filter(item => item.title);
+      await api('/action-plans',{method:'POST',body:JSON.stringify({title:data.get('title'),items})});
+      toast('行动计划已创建','success'); render();
+    } catch(error) { showError(error); setBusy(button,false); }
+  });
+  document.querySelectorAll('.plan-toggle').forEach(button => button.addEventListener('click', async () => {
+    const status = button.dataset.status === 'DONE' ? 'PENDING' : 'DONE';
+    const feedback = status === 'DONE' ? prompt('留下一句完成感受（可选，最多280字）','') : null;
+    if (status === 'DONE' && feedback === null) return;
+    setBusy(button,true,'…');
+    try {
+      await api(`/action-plans/${button.dataset.planId}/items/${button.dataset.itemId}`,{method:'PATCH',body:JSON.stringify({status,feedback:feedback || null})});
+      toast(status === 'DONE' ? '已完成一个小步骤' : '已恢复为待完成','success'); render();
+    } catch(error) { showError(error); setBusy(button,false); }
+  }));
 }
 
 function bindTasks() {

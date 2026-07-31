@@ -18,6 +18,7 @@ class OpenApiContractTests(unittest.TestCase):
         for path in (
             "/tasks",
             "/analysis-records",
+            "/action-plans",
             "/modules",
             "/ai/invoke",
             "/mood-checkins",
@@ -27,6 +28,8 @@ class OpenApiContractTests(unittest.TestCase):
         self.assertIn("CreateAnalysisRecordRequest", schemas)
         self.assertIn("ModuleUpsertRequest", schemas)
         self.assertIn("CreateMoodCheckinRequest", schemas)
+        self.assertIn("CreateActionPlanRequest", schemas)
+        self.assertIn("UpdateActionPlanItemRequest", schemas)
 
 
 if __name__ == "__main__":
