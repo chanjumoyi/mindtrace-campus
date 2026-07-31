@@ -45,7 +45,7 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/public/**", "/actuator/health/**", "/error").permitAll()
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/public/**", "/actuator/health/**", "/error", "/api/v1/risk-signals").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) -> write(res, mapper, 401, ErrorCode.UNAUTHORIZED, "请先登录或登录已过期"))

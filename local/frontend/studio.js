@@ -2,11 +2,39 @@ import { api, session } from './api.js';
 import { runTrackedAnalysis } from './analysis-workflow.mjs';
 import { escapeHtml, pageHeader, toast } from './components.js';
 
+const SANDPLAY_CATEGORIES = [
+  ['all', '全部'],
+  ['people', '人物'],
+  ['animals', '动物'],
+  ['buildings', '建筑'],
+  ['plants', '植物'],
+  ['nature', '自然'],
+  ['vehicles', '交通'],
+  ['abstract', '抽象'],
+];
+
 const SANDPLAY_ITEMS = [
-  ['person', '人物', '🧑'], ['family', '家庭', '👨‍👩‍👧'], ['house', '房屋', '🏠'],
-  ['tree', '树木', '🌳'], ['flower', '花朵', '🌻'], ['dog', '动物', '🐕'],
-  ['bird', '飞鸟', '🕊️'], ['mountain', '山峰', '⛰️'], ['river', '河流', '🌊'],
-  ['sun', '太阳', '☀️'], ['car', '车辆', '🚙'], ['bridge', '桥梁', '🌉']
+  // 人物 (5)
+  ['person', '人物', '🧑', 'people'], ['family', '家庭', '👨‍👩‍👧', 'people'], ['child', '小孩', '👶', 'people'],
+  ['elder', '老人', '👴', 'people'], ['figure', '人影', '👤', 'people'],
+  // 动物 (5)
+  ['dog', '狗', '🐕', 'animals'], ['cat', '猫', '🐈', 'animals'], ['bird', '飞鸟', '🐦', 'animals'],
+  ['fish', '鱼', '🐟', 'animals'], ['rabbit', '兔子', '🐇', 'animals'],
+  // 建筑 (5)
+  ['house', '房屋', '🏠', 'buildings'], ['school', '学校', '🏫', 'buildings'], ['hospital', '医院', '🏥', 'buildings'],
+  ['church', '教堂', '⛪', 'buildings'], ['office', '办公楼', '🏢', 'buildings'],
+  // 植物 (5)
+  ['tree', '树木', '🌳', 'plants'], ['flower', '花朵', '🌻', 'plants'], ['rose', '玫瑰', '🌹', 'plants'],
+  ['grass', '草丛', '🌿', 'plants'], ['mushroom', '蘑菇', '🍄', 'plants'],
+  // 自然 (5)
+  ['sun', '太阳', '☀️', 'nature'], ['moon', '月亮', '🌙', 'nature'], ['star', '星星', '⭐', 'nature'],
+  ['mountain', '山峰', '⛰️', 'nature'], ['wave', '海浪', '🌊', 'nature'],
+  // 交通 (5)
+  ['car', '汽车', '🚗', 'vehicles'], ['bus', '公交', '🚌', 'vehicles'], ['plane', '飞机', '✈️', 'vehicles'],
+  ['bike', '自行车', '🚲', 'vehicles'], ['boat', '船', '⛵', 'vehicles'],
+  // 抽象 (5)
+  ['heart', '爱心', '❤️', 'abstract'], ['star2', '星光', '⭐', 'abstract'], ['rainbow', '彩虹', '🌈', 'abstract'],
+  ['music', '音符', '🎵', 'abstract'], ['dove', '和平鸽', '🕊️', 'abstract'],
 ];
 
 const sandplayState = { elements: [], nextId: 1 };
@@ -32,6 +60,7 @@ export async function studioHomePage() {
       <div><span class="studio-kicker">MINDLINE · MULTIMODAL WELLBEING</span><h2>把表达、观察与行动放在同一条路径里</h2><p>从动态笔迹、心理沙盘或房树人开始，系统只记录可观察特征，再通过统一AI网关生成克制的探索问题和后续任务。</p><div class="studio-actions"><a class="btn btn-primary" href="#/handwriting-live">开始书写</a><a class="btn" href="#/sandplay">进入沙盘</a></div></div>
       <div class="studio-orbit" aria-hidden="true"><span>笔迹</span><span>沙盘</span><span>HTP</span><strong>心迹AI</strong></div>
     </section>
+    <section class="section" id="mood-trends-section" aria-label="情绪趋势"></section>
     <section class="studio-flow" aria-label="产品流程">
       ${flowStep('01','自主表达','书写、布局或上传图像')}${flowStep('02','客观观察','轨迹、几何与问卷特征')}${flowStep('03','AI辅助','引用、限制与探索问题')}${flowStep('04','行动反馈','任务、复评与审计记录')}
     </section>
@@ -55,6 +84,28 @@ export async function studioHomePage() {
 
 export function bindStudioHomePage() {
   checkHandwritingHealth();
+  renderMoodTrends();
+}
+
+async function renderMoodTrends() {
+  const section = document.querySelector('#mood-trends-section');
+  if (!section) return;
+  try {
+    const data = await api('/mood-checkins/trends?days=7');
+    if (!data.data || !data.data.hasData) {
+      section.innerHTML = `<div class="card section-card" style="text-align:center;padding:28px"><strong>心情趋势</strong><p class="muted">${data.data?.message || '完成 3 次打卡后将生成趋势'}</p><a class="btn" href="#/mood">去打卡</a></div>`;
+      return;
+    }
+    const points = data.data.points || [];
+    const maxMood = Math.max(...points.map(p => p.avgMood), 5);
+    const bars = points.slice(0, 7).reverse().map(p => {
+      const h = Math.round(p.avgMood / maxMood * 100);
+      return `<div class="trend-bar-col"><span class="trend-date">${p.date.slice(5)}</span><div class="trend-bar" style="height:${h}%" title="心情 ${p.avgMood}"></div><small>${p.avgMood}</small></div>`;
+    }).join('');
+    section.innerHTML = `<div class="card section-card"><div class="studio-section-title"><div><span>情绪趋势</span><h2>7 日心情变化</h2></div></div><div class="trend-chart"><div class="trend-bars">${bars}</div></div><p class="muted" style="margin-top:8px">平均心情 ${points[0]?.avgMood || '-'} · 睡眠 ${points[0]?.avgSleepHours || '-'}h · 共 ${points.reduce((s,p) => s + p.checkinCount, 0)} 次打卡</p></div>`;
+  } catch {
+    section.innerHTML = '';
+  }
 }
 
 export async function handwritingLivePage() {
@@ -77,7 +128,7 @@ export async function sandplayPage() {
     ${pageHeader('心理沙盘工作台', '自由摆放元素，系统只生成结构化布局观察。', '<button class="btn" id="sand-undo">撤销</button><button class="btn btn-danger" id="sand-clear">清空</button>')}
     <div class="scope-note"><strong>使用边界：</strong>元素选择和空间位置没有固定心理含义；任何说明都需要结合用户自己的叙述。</div>
     <section class="sand-layout">
-      <aside class="card sand-palette"><h2>元素库</h2><p class="muted">点击元素添加到画布，再拖动调整位置。</p><div class="sand-palette-grid">${SANDPLAY_ITEMS.map(([type,label,icon]) => `<button class="sand-palette-item" data-type="${type}" data-label="${label}" data-icon="${icon}" type="button"><span>${icon}</span>${label}</button>`).join('')}</div></aside>
+      <aside class="card sand-palette"><h2>元素库</h2><div class="sand-category-tabs">${SANDPLAY_CATEGORIES.map(([cat, label]) => `<button class="sand-cat-tab${cat === 'all' ? ' active' : ''}" data-cat="${cat}" type="button">${label}</button>`).join('')}</div><div class="sand-palette-grid">${SANDPLAY_ITEMS.map(([type,label,icon]) => `<button class="sand-palette-item" data-type="${type}" data-label="${label}" data-icon="${icon}" type="button"><span>${icon}</span>${label}</button>`).join('')}</div></aside>
       <div class="sand-main"><div class="card sand-board-wrap"><div class="sand-axis sand-axis-x"></div><div class="sand-axis sand-axis-y"></div><div id="sand-board" class="sand-board" aria-label="沙盘画布"></div><span class="sand-quadrant q1">远景 · 左</span><span class="sand-quadrant q2">远景 · 右</span><span class="sand-quadrant q3">近景 · 左</span><span class="sand-quadrant q4">近景 · 右</span></div>
         <div class="studio-actions"><button class="btn btn-primary" id="sand-analyze" type="button">生成结构化观察</button><span class="muted" id="sand-count">0 个元素</span></div>
         <section id="sand-result" class="studio-result" aria-live="polite"></section>
@@ -89,6 +140,17 @@ export async function sandplayPage() {
 
 export function bindSandplayPage() {
   renderSandplay();
+  // Category filter tabs
+  document.querySelectorAll('.sand-cat-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sand-cat-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const cat = tab.dataset.cat;
+      document.querySelectorAll('.sand-palette-item').forEach(item => {
+        item.style.display = cat === 'all' || SANDPLAY_ITEMS.find(([t]) => t === item.dataset.type)?.[3] === cat ? '' : 'none';
+      });
+    });
+  });
   document.querySelectorAll('.sand-palette-item').forEach(button => button.addEventListener('click', () => {
     const offset = sandplayState.elements.length % 7;
     sandplayState.elements.push({ id: sandplayState.nextId++, type: button.dataset.type, label: button.dataset.label, icon: button.dataset.icon, x: 38 + offset * 8, y: 42 + (offset % 3) * 10 });
@@ -127,6 +189,8 @@ export async function htpPage() {
             <span id="htp-canvas-placeholder">在此区域按住鼠标左键绘制</span>
           </div>
         </div>
+        <div class="field"><label>绘画顺序</label><select name="drawingOrder" required><option value="">请选择…</option><option value="house-first">先画房子</option><option value="tree-first">先画树木</option><option value="person-first">先画人物</option><option value="not-sure">不太确定</option></select></div>
+        <div class="field"><label>画面完整度</label><select name="completeness" required><option value="">请选择…</option><option value="complete">完整</option><option value="mostly-complete">大部分完成</option><option value="partial">部分完成</option></select></div>
         <div class="field"><label>这幅画讲述了什么？</label><textarea name="story" maxlength="500" placeholder="请用自己的语言描述作品…" required></textarea></div>
         <div class="field"><label>房屋描述</label><input name="houseDescription" maxlength="180" placeholder="例如：房屋是谁居住、周围环境如何"></div>
         <div class="field"><label>树木描述</label><input name="treeDescription" maxlength="180" placeholder="例如：树的种类、季节、状态"></div>
@@ -461,7 +525,7 @@ async function analyzeHtp(event) {
       taskType: 'HTP_ANALYSIS',
       title: '房树人客观观察',
       requestRef: `file:${saved.id}`,
-      invoke: () => invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields }),
+      invoke: async () => invokeGateway('htp.analyze', { fileId: saved.id, metadata, questionnaire: fields, imageBase64: await fileToBase64DataUrl(file) }),
       persist: ({ gateway, task }) => saveAnalysisRecord({
         moduleType: 'HTP', taskId: task.id, sourceRef: `file:${saved.id}`, title: '房树人客观观察',
         observations, features: htpFeatures(metadata, fields),
@@ -471,8 +535,13 @@ async function analyzeHtp(event) {
     const { gateway, task, record } = workflow;
     const aiSummary = extractGatewayText(gateway);
     window.__mindlineContexts.htp = { fileName: file.name, story: fields.story, houseDescription: fields.houseDescription, treeDescription: fields.treeDescription, personDescription: fields.personDescription, aiSummary, taskId: task.id, recordId: record.id, time: new Date().toLocaleString() };
+    const degradationNote = gateway?.data?.degradationNote;
+    const degradationBanner = degradationNote ? `<div class="degradation-banner">本次分析未包含画面视觉信息：${escapeHtml(degradationNote)}</div>` : '';
+    if (degradationNote) {
+      observations.push('视觉分析不可用，基于问卷文字描述生成观察。');
+    }
     const extra = aiSummary ? `<div class="card" style="margin-top:12px;padding:14px"><strong>千问辅助说明</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(aiSummary)}</p></div>` : '';
-    result.innerHTML = renderObservation('房树人客观记录', observations, gatewayNote(gateway, task, record)) + extra; toast('作品已保存并形成观察记录', 'success');
+    result.innerHTML = degradationBanner + renderObservation('房树人客观记录', observations, gatewayNote(gateway, task, record)) + extra; toast('作品已保存并形成观察记录', 'success');
     await refreshAnalysisHistory('htp-history', 'HTP');
   } catch (error) {
     const taskNote = error.taskId ? `失败任务 ${error.taskId} 已保留，可在任务状态页查看。` : '分析任务未创建。';
@@ -482,11 +551,51 @@ async function analyzeHtp(event) {
   finally { setButtonBusy(button, false); }
 }
 
+async function fetchCompanionContext() {
+  const contexts = {};
+  try {
+    const [htpRes, sandplayRes, handwritingRes, moodRes] = await Promise.allSettled([
+      api('/analysis-records?moduleType=HTP'),
+      api('/analysis-records?moduleType=SANDPLAY'),
+      api('/analysis-records?moduleType=HANDWRITING'),
+      api('/mood-checkins/trends?days=7'),
+    ]);
+
+    const htpRecords = (htpRes.status === 'fulfilled' && htpRes.value?.data) || [];
+    const sandplayRecords = (sandplayRes.status === 'fulfilled' && sandplayRes.value?.data) || [];
+    const handwritingRecords = (handwritingRes.status === 'fulfilled' && handwritingRes.value?.data) || [];
+    const moodData = (moodRes.status === 'fulfilled' && moodRes.value?.data) || null;
+
+    if (htpRecords.length) {
+      const latest = htpRecords[0];
+      contexts.htp = { fileName: latest.sourceRef || '', aiSummary: (latest.aiSummary || '').slice(0, 200), recordId: latest.id, time: latest.createdAt };
+    }
+    if (sandplayRecords.length) {
+      const latest = sandplayRecords[0];
+      contexts.sandplay = { aiSummary: (latest.aiSummary || '').slice(0, 200), recordId: latest.id, time: latest.createdAt };
+    }
+    if (handwritingRecords.length) {
+      const latest = handwritingRecords[0];
+      contexts.handwriting = { aiSummary: (latest.aiSummary || '').slice(0, 200), recordId: latest.id, time: latest.createdAt };
+    }
+    // Also merge in-memory contexts (current session, not yet persisted)
+    const memCtx = window.__mindlineContexts || {};
+    if (memCtx.htp && !contexts.htp) contexts.htp = memCtx.htp;
+    if (memCtx.sandplay && !contexts.sandplay) contexts.sandplay = memCtx.sandplay;
+    if (memCtx.handwriting && !contexts.handwriting) contexts.handwriting = memCtx.handwriting;
+
+    if (moodData && moodData.hasData) {
+      contexts.moodTrends = { points: moodData.points };
+    }
+  } catch { /* silently use empty contexts on failure */ }
+  return contexts;
+}
+
 async function sendAssistantMessage(message) {
   assistantState.messages.push({ role:'user', text:message }); renderAssistantMessages();
   const placeholder = { role:'assistant', text:'正在通过统一AI网关整理…', pending:true }; assistantState.messages.push(placeholder); renderAssistantMessages();
   try {
-    const contexts = window.__mindlineContexts || {};
+    const contexts = await fetchCompanionContext();
     const gateway = await invokeGateway('companion.chat', { message, history:assistantState.messages.filter(item => !item.pending).slice(-8), moduleContexts: Object.keys(contexts).length ? contexts : undefined });
     placeholder.text = extractGatewayText(gateway) || '当前真实陪伴Agent尚未配置，但统一网关已收到请求。你可以尝试描述一个具体情境、当时的感受和希望采取的小行动。';
   } catch (error) { placeholder.text = `AI网关暂不可用。先把问题缩小一点：在"${message.slice(0,40)}"这件事里，你最想先处理哪一个部分？`; }
@@ -547,6 +656,8 @@ function htpFeatures(metadata, fields) {
   return {
     image:{ width:metadata.width, height:metadata.height, type:metadata.type, size:metadata.size },
     questionnaire:{
+      drawingOrder:String(fields.drawingOrder || 'not-sure'),
+      completeness:String(fields.completeness || 'not-sure'),
       storyLength:String(fields.story || '').length,
       houseDescriptionProvided:Boolean(String(fields.houseDescription || '').trim()),
       treeDescriptionProvided:Boolean(String(fields.treeDescription || '').trim()),
@@ -555,7 +666,7 @@ function htpFeatures(metadata, fields) {
   };
 }
 async function invokeGateway(requestedOperation, input) {
-  return api('/ai/invoke', { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({ moduleCode:'MULTIMODAL_AGENT', operation:window.MINDLINE_AGENT_OPERATION || 'echo', input:{ requestedOperation, ...input }, timeoutMs:8000 }) });
+  return api('/ai/invoke', { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({ moduleCode:'MULTIMODAL_AGENT', operation: requestedOperation, input: { ...input }, timeoutMs:8000 }) });
 }
 
 function gatewayNote(gateway, task, record) {
@@ -575,3 +686,26 @@ function setButtonBusy(button, busy, busyText) { if (!button) return; if (busy) 
 function imageMetadata(file) { return new Promise((resolve,reject) => { const image = new Image(); const url = URL.createObjectURL(file); image.onload = () => { resolve({ width:image.naturalWidth, height:image.naturalHeight, type:file.type, size:file.size }); URL.revokeObjectURL(url); }; image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('无法读取图片')); }; image.src = url; }); }
 function formatBytes(value) { return value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`; }
 function clamp(value,min,max) { return Math.min(max, Math.max(min, value)); }
+
+async function fileToBase64DataUrl(file) {
+  const MAX_PX = 1024;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (Math.max(w, h) > MAX_PX) {
+        const ratio = MAX_PX / Math.max(w, h);
+        w = Math.round(w * ratio); h = Math.round(h * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
+    img.src = url;
+  });
+}

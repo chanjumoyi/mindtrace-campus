@@ -65,10 +65,24 @@ public class MoodCheckinService {
                 entity.getSleepHours(), tags, entity.getOccurredAt());
     }
 
+    @Transactional(readOnly = true)
+    public TrendResult trends(int days) {
+        var actor = SecurityUtils.current();
+        int safeDays = Math.max(1, Math.min(days, MAX_DAYS));
+        var rows = repository.findDailyTrends(actor.id(), OffsetDateTime.now().minusDays(safeDays));
+        var points = rows.stream().map(row -> new TrendPoint(
+                row[0].toString(), ((Number) row[1]).doubleValue(),
+                ((Number) row[2]).doubleValue(), ((Number) row[3]).doubleValue(),
+                ((Number) row[4]).intValue())).toList();
+        return new TrendResult(points.size() >= 3, points.size() < 3 ? "完成 3 次打卡后将生成趋势" : null, points);
+    }
+
     public record CreateMoodCheckinRequest(
             int mood, int stress, double sleepHours, List<String> tags, OffsetDateTime occurredAt) {}
     public record MoodCheckinView(
             String id, String ownerUserId, int mood, int stress, double sleepHours,
             List<String> tags, OffsetDateTime occurredAt) {}
+    public record TrendPoint(String date, double avgMood, double avgStress, double avgSleepHours, int checkinCount) {}
+    public record TrendResult(boolean hasData, String message, List<TrendPoint> points) {}
 
 }

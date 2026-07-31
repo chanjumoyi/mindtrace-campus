@@ -1,7 +1,20 @@
 import http from 'node:http';
+import { scanCrisis, SAFETY_GUIDANCE } from './crisisScanner.js';
+import { sanitizeInput } from './sanitizeInput.js';
 
 const port = Number(process.env.PORT || 8090);
+const BACKEND_URL = (process.env.BACKEND_URL || 'http://backend:8080').trim();
 const attemptsByRequest = new Map();
+
+function reportRiskSignal(level, source, triggerContent) {
+  const payload = JSON.stringify({ level, source, triggerContent: triggerContent.slice(0, 500) });
+  fetch(`${BACKEND_URL}/api/v1/risk-signals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+    signal: AbortSignal.timeout(3000),
+  }).catch(err => console.warn(`[agent] risk signal report failed (non-blocking): ${err.message}`));
+}
 const MAX_BODY = 1024 * 1024;
 
 // ── Qwen / OpenAI-compatible config ──────────────────────────────────
@@ -51,7 +64,13 @@ const HTP_PROMPT = [
   '安全边界：不得诊断、不得说画面元素「代表」「象征着」特定心理含义，只能用「可能」「或许」等推测语气。',
 ].join('\n');
 
-const FORBIDDEN_TERMS = ['诊断为', '患有', '人格障碍', '心理疾病', '抑郁症', '焦虑症', '精神疾病'];
+const FORBIDDEN_PATTERNS = [
+  /诊断为/, /患有/, /人格障碍/, /心理疾病/, /抑郁症/, /焦虑症/, /精神疾病/,
+  /你[有患].{0,3}(抑郁|焦虑|强迫|躁狂|双相|精神分裂)/,
+  /你有.{0,3}症/, /你\s*(是|有)\s*(一个|个)?\s*(抑郁|焦虑|强迫|躁郁|自闭|多动)/,
+  /ni\s*you\s*(yiyuzheng|jiaolvzheng|qiangpozheng)/i,
+  /ni\s*shi\s*(yiyu|jiaolv|qiangpo)/i,
+];
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -142,10 +161,11 @@ function sleep(ms) {
 }
 
 function safeContent(text) {
-  for (const term of FORBIDDEN_TERMS) {
-    if (String(text || '').includes(term)) return { blocked: true, reason: `响应包含禁用语: ${term}` };
+  const input = String(text || '');
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(input)) return { blocked: true, reason: `响应匹配禁用语模式: ${pattern.source.slice(0, 40)}` };
   }
-  return { blocked: false, text: String(text || '') };
+  return { blocked: false, text: input };
 }
 
 // ── response helpers ──────────────────────────────────────────────────
@@ -201,10 +221,10 @@ const server = http.createServer(async (req, res) => {
     // ── chat / companion ──────────────────────────────────────────
     const isChatOp = operation === 'chat' || operation === 'companion.chat';
     const hasMessage = typeof input.message === 'string' && input.message.trim();
-    const requestedOp = input.requestedOperation || '';
+    const requestedOp = input.requestedOperation || operation || '';
 
-    if (isChatOp || requestedOp === 'companion.chat' || requestedOp === 'chat' ||
-        (operation === 'echo' && hasMessage && (requestedOp === 'companion.chat' || requestedOp === 'chat'))) {
+    if (isChatOp || requestedOp === 'chat' ||
+        (operation === 'echo' && hasMessage && (input.requestedOperation === 'companion.chat' || input.requestedOperation === 'chat'))) {
 
       if (LLM_MODE === 'qwen' && QWEN_API_KEY) {
         const history = Array.isArray(input.history) ? input.history : [];
@@ -225,6 +245,14 @@ const server = http.createServer(async (req, res) => {
             const t = moduleContexts.htp;
             parts.push(`【房树人分析】作品：${t.fileName}，用户故事：${t.story || '无'}，房屋：${t.houseDescription || '无'}，树木：${t.treeDescription || '无'}，人物：${t.personDescription || '无'}，千问分析：${t.aiSummary || '无'}`);
           }
+          if (moduleContexts.moodTrends && moduleContexts.moodTrends.points && moduleContexts.moodTrends.points.length > 0) {
+            const pts = moduleContexts.moodTrends.points;
+            const latest = pts[0];
+            const trendDesc = pts.length >= 3
+              ? `近${pts.length}天趋势：心情 ${pts[pts.length-1]?.avgMood}→${latest.avgMood}，压力 ${pts[pts.length-1]?.avgStress}→${latest.avgStress}，日均睡眠 ${latest.avgSleepHours}h`
+              : `最近心情 ${latest.avgMood}/5，压力 ${latest.avgStress}/5，睡眠 ${latest.avgSleepHours}h`;
+            parts.push(`【情绪趋势】${trendDesc}`);
+          }
           if (parts.length) contextNote = '\n\n用户在当前会话中已完成以下模块分析，你可以在对话中自然地引用这些信息：\n' + parts.join('\n');
         }
         const fullSysPrompt = SYSTEM_PROMPT + contextNote;
@@ -237,8 +265,24 @@ const server = http.createServer(async (req, res) => {
           { role: 'user', content: hasMessage || '你好' },
         ];
 
+        // Crisis scan on user input (companion chat)
+        const userText = hasMessage || '';
+        const crisisResult = scanCrisis(userText);
+        if (crisisResult.level === 'RED') {
+          console.warn(`[agent] RED crisis in user input: ${crisisResult.keywords.join(', ')}`);
+          reportRiskSignal('RED', 'user_input', userText);
+          return send(res, 200, realResponse(SAFETY_GUIDANCE, QWEN_MODEL, requestId));
+        }
+
         try {
-          const qwenText = await callQwen(messages, Number(body.timeoutMs) || QWEN_TIMEOUT);
+          let qwenText = await callQwen(messages, Number(body.timeoutMs) || QWEN_TIMEOUT);
+          // Scan AI output for safety
+          const outputScan = scanCrisis(qwenText);
+          if (outputScan.level === 'RED') {
+            console.warn('[agent] RED crisis in AI output, replacing');
+            reportRiskSignal('RED', 'ai_output', qwenText);
+            qwenText = SAFETY_GUIDANCE;
+          }
           const check = safeContent(qwenText);
           if (check.blocked) {
             return send(res, 200, realResponse(
@@ -271,25 +315,82 @@ const server = http.createServer(async (req, res) => {
           userMsg = `请像一个心理老师那样，描述这个沙盘作品的整体感受和可能的内在状态：\n${userContent}`;
         } else if (requestedOp.startsWith('htp')) {
           sysPrompt = HTP_PROMPT;
-          userMsg = `请像一个温和的美术心理老师那样，描述这幅房树人绘画给人的整体感受：\n${userContent}`;
+          const imageBase64 = input.imageBase64;
+          if (imageBase64 && typeof imageBase64 === 'string' && imageBase64.startsWith('data:image/')) {
+            // Vision API: send the actual image to the model
+            const questionnaire = input.questionnaire || {};
+            const textPrompt = [
+              '请像一个温和的美术心理老师那样，观察这幅房树人绘画。',
+              '请做到：',
+              '1. 描述画面的整体感受和情绪氛围——线条、空间使用、笔触力度给你的直观印象。',
+              '2. 观察房屋、树木、人物各自的特点以及它们之间的关系。',
+              '3. 结合用户的文字描述（如下），将画面信息与故事融合起来。',
+              '4. 提出2-3个开放性问题帮助用户进一步自我探索。',
+              '5. 控制在250字以内，语气温暖自然。',
+              '',
+              `绘画顺序：${questionnaire.drawingOrder || '未提供'}`,
+              `画面完整度：${questionnaire.completeness || '未提供'}`,
+              `用户故事：${questionnaire.story || '未提供'}`,
+              `房屋描述：${questionnaire.houseDescription || '未提供'}`,
+              `树木描述：${questionnaire.treeDescription || '未提供'}`,
+              `人物描述：${questionnaire.personDescription || '未提供'}`,
+              '',
+              '安全边界：不得诊断、不得贴标签，只能用「可能」「或许」等推测语气。',
+            ].join('\n');
+            userMsg = textPrompt;
+            userContent_forVision = [
+              { type: 'image_url', image_url: { url: imageBase64 } },
+              { type: 'text', text: textPrompt },
+            ];
+          } else {
+            // Text-only fallback (no image data)
+            userMsg = `请像一个温和的美术心理老师那样，描述这幅房树人绘画给人的整体感受（注意：当前无法查看图片，请仅基于元数据给出建议）：\n${userContent}`;
+          }
         }
         const messages = [
           { role: 'system', content: sysPrompt },
-          { role: 'user', content: userMsg },
+          { role: 'user', content: (typeof userContent_forVision !== 'undefined' ? userContent_forVision : userMsg) },
         ];
-        const qwenText = await callQwen(messages, Number(body.timeoutMs) || QWEN_TIMEOUT);
+
+        // Crisis scan on structured input (HTP/sandplay questionnaire)
+        const structScan = scanCrisis(userContent);
+        if (structScan.level === 'RED') {
+          console.warn(`[agent] RED crisis in structured input: ${structScan.keywords.join(', ')}`);
+          reportRiskSignal('RED', 'user_input', userContent.slice(0, 500));
+          return send(res, 200, realResponse(SAFETY_GUIDANCE, QWEN_MODEL, requestId));
+        }
+
+        let qwenText = await callQwen(messages, Number(body.timeoutMs) || QWEN_TIMEOUT);
+        // Scan AI output
+        const outputScan = scanCrisis(qwenText);
+        if (outputScan.level === 'RED') {
+          console.warn('[agent] RED crisis in AI output, replacing');
+          qwenText = SAFETY_GUIDANCE;
+        }
         const check = safeContent(qwenText);
         if (check.blocked) {
           return send(res, 200, realResponse(
             '当前数据不足以形成稳定的观察。建议进一步缩小范围，聚焦具体情境。',
             QWEN_MODEL, requestId));
         }
-        return send(res, 200, realResponse(check.text, QWEN_MODEL, requestId));
+        // Add visual observation metadata for HTP
+        const isHtpOp = requestedOp.startsWith('htp');
+        const responseBody = realResponse(check.text, QWEN_MODEL, requestId);
+        if (isHtpOp) {
+          responseBody.visualObservation = { description: check.text, model: QWEN_MODEL, analyzedAt: new Date().toISOString() };
+        }
+        return send(res, 200, responseBody);
       } catch (err) {
         console.error(`[agent] Qwen call failed: ${err.message}`);
-        return send(res, 200, mockResponse(
-          `千问暂时不可用（${err.message.slice(0, 80)}）。本地结构化观察仍然有效。`,
-          requestId));
+        const isHtpOp = requestedOp.startsWith('htp');
+        const fallback = `千问暂时不可用（${err.message.slice(0, 80)}）。本地结构化观察仍然有效。`;
+        const responseBody = mockResponse(fallback, requestId);
+        if (isHtpOp) {
+          responseBody.visualObservation = null;
+          responseBody.degradationNote = `多模态模型调用失败：${err.message.slice(0, 120)}。分析基于问卷文字描述进行。`;
+          responseBody.degradationLevel = 'QUESTIONNAIRE_ONLY';
+        }
+        return send(res, 200, responseBody);
       }
     }
 

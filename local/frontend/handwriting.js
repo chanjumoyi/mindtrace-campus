@@ -67,6 +67,24 @@ export function bindHandwritingPage() {
         llmSummary: result.llmExplanation?.summary || '',
         time: new Date().toLocaleString()
       };
+      // Persist to analysis_records for cross-session companion context
+      try {
+        await api('/analysis-records', {
+          method: 'POST',
+          body: JSON.stringify({
+            moduleType: 'HANDWRITING',
+            taskId: crypto.randomUUID(),
+            sourceRef: `handwriting:${selectedTrace.participantId || 'anonymous'}`,
+            title: '笔迹分析记录',
+            observations: result.observations?.slice(0, 5).map(o => o.description) || [],
+            features: { taskType: selectedTrace.task?.type, pointCount: selectedTrace.points?.length, dataQuality: result.dataQuality },
+            aiSummary: result.llmExplanation?.summary || '',
+            provider: result.llmExplanation?.provider || 'unknown',
+            model: result.llmExplanation?.model || 'unknown',
+            mockResult: !result.llmExplanation?.summary
+          })
+        });
+      } catch { /* non-blocking */ }
       toast('笔迹分析完成', 'success');
     } catch (error) {
       document.querySelector('#handwriting-result').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
