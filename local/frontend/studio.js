@@ -16,6 +16,15 @@ const assistantState = {
 let htpPreviewUrl = '';
 window.__mindlineContexts = window.__mindlineContexts || {};
 
+const htpDrawState = {
+  canvas: null,
+  ctx: null,
+  undoStack: [],
+  tool: 'pen',
+  drawing: false,
+  hasContent: false
+};
+
 export async function studioHomePage() {
   return `<div class="content studio-home">
     ${pageHeader('心迹AI 综合工作台', `欢迎回来，${session.user?.displayName || '同学'}`, '<span class="studio-pill">本地演示环境</span>')}
@@ -94,12 +103,30 @@ export function bindSandplayPage() {
 export async function htpPage() {
   const history = await loadAnalysisHistory('HTP');
   return `<div class="content studio-page">
-    ${pageHeader('房树人 HTP 工作台', '上传作品并补充创作说明，生成可追溯的客观观察。')}
-    <div class="scope-note"><strong>重要：</strong>房树人不能用于自动诊断。当前版本优先记录图像元数据和用户自述，视觉模型接入后仍必须遵循“观察与解释分离”。</div>
+    ${pageHeader('房树人 HTP 工作台', '上传作品或现场绘制，补充创作说明，生成可追溯的客观观察。')}
+    <div class="scope-note"><strong>重要：</strong>房树人不能用于自动诊断。当前版本优先记录图像元数据和用户自述，视觉模型接入后仍必须遵循"观察与解释分离"。</div>
     <section class="htp-layout">
       <form id="htp-form" class="card section-card htp-form">
         <h2>作品与问卷</h2>
-        <label class="htp-upload" for="htp-file"><input id="htp-file" name="file" type="file" accept="image/png,image/jpeg" required><span>选择 PNG/JPEG 作品</span><small>文件将通过统一文件中心保存并生成审计记录</small></label>
+        <div class="htp-mode-tabs">
+          <button type="button" class="htp-mode-tab active" data-mode="upload">上传图片</button>
+          <button type="button" class="htp-mode-tab" data-mode="draw">现场绘制</button>
+        </div>
+        <div id="htp-upload-panel" class="htp-mode-panel">
+          <label class="htp-upload" for="htp-file"><input id="htp-file" name="file" type="file" accept="image/png,image/jpeg"><span>选择 PNG/JPEG 作品</span><small>文件将通过统一文件中心保存并生成审计记录</small></label>
+        </div>
+        <div id="htp-draw-panel" class="htp-mode-panel" hidden>
+          <div class="htp-draw-toolbar">
+            <button type="button" class="htp-tool-btn active" data-tool="pen" title="黑色画笔">✏️ 画笔</button>
+            <button type="button" class="htp-tool-btn" data-tool="eraser" title="橡皮擦">🧹 橡皮</button>
+            <button type="button" class="htp-tool-btn" id="htp-undo-btn" title="撤回">↩️ 撤回</button>
+            <button type="button" class="htp-tool-btn htp-clear-btn" id="htp-clear-btn" title="清空画布">🗑️ 清空</button>
+          </div>
+          <div class="htp-canvas-wrap">
+            <canvas id="htp-canvas" width="700" height="500"></canvas>
+            <span id="htp-canvas-placeholder">在此区域按住鼠标左键绘制</span>
+          </div>
+        </div>
         <div class="field"><label>这幅画讲述了什么？</label><textarea name="story" maxlength="500" placeholder="请用自己的语言描述作品…" required></textarea></div>
         <div class="field"><label>房屋描述</label><input name="houseDescription" maxlength="180" placeholder="例如：房屋是谁居住、周围环境如何"></div>
         <div class="field"><label>树木描述</label><input name="treeDescription" maxlength="180" placeholder="例如：树的种类、季节、状态"></div>
@@ -107,7 +134,7 @@ export async function htpPage() {
         <label class="check-row"><input name="consent" type="checkbox" required>我理解结果仅用于自我探索，并同意在演示环境处理这份模拟/匿名作品。</label>
         <button class="btn btn-primary" type="submit">保存并生成观察</button>
       </form>
-      <div><section class="card htp-preview"><div id="htp-placeholder"><strong>作品预览</strong><p>选择文件后将在这里显示。</p></div><img id="htp-preview-image" alt="房树人作品预览" hidden></section><section id="htp-result" class="studio-result" aria-live="polite"></section></div>
+      <div><section class="card htp-preview"><div id="htp-placeholder"><strong>作品预览</strong><p>选择文件或绘制后将在这里显示。</p></div><img id="htp-preview-image" alt="房树人作品预览" hidden></section><section id="htp-result" class="studio-result" aria-live="polite"></section></div>
     </section>
     <section id="htp-history" class="section">${renderAnalysisHistory(history, 'HTP')}</section>
   </div>`;
@@ -115,14 +142,206 @@ export async function htpPage() {
 
 export function bindHtpPage() {
   const input = document.querySelector('#htp-file');
+  const filePanel = document.querySelector('#htp-upload-panel');
+  const drawPanel = document.querySelector('#htp-draw-panel');
+  const placeholder = document.querySelector('#htp-placeholder');
+  const previewImage = document.querySelector('#htp-preview-image');
+  const canvas = document.querySelector('#htp-canvas');
+  const canvasPlaceholder = document.querySelector('#htp-canvas-placeholder');
+
+  // Mode tabs
+  document.querySelectorAll('.htp-mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.htp-mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const mode = tab.dataset.mode;
+      if (mode === 'upload') {
+        filePanel.hidden = false;
+        drawPanel.hidden = true;
+        input.required = true;
+      } else {
+        filePanel.hidden = true;
+        drawPanel.hidden = false;
+        input.required = false;
+        initCanvas();
+      }
+    });
+  });
+
+  // File upload preview
   input?.addEventListener('change', () => {
     if (htpPreviewUrl) URL.revokeObjectURL(htpPreviewUrl);
+    if (!canvas || !htpDrawState.hasContent) {
+      // Only clear canvas-based preview if we're in upload mode
+    }
     const file = input.files?.[0];
-    const image = document.querySelector('#htp-preview-image');
-    if (!file || !image) return;
-    htpPreviewUrl = URL.createObjectURL(file); image.src = htpPreviewUrl; image.hidden = false;
-    document.querySelector('#htp-placeholder')?.setAttribute('hidden', '');
+    if (!file || !previewImage) return;
+    htpPreviewUrl = URL.createObjectURL(file);
+    previewImage.src = htpPreviewUrl;
+    previewImage.hidden = false;
+    placeholder?.setAttribute('hidden', '');
+    if (canvasPlaceholder) canvasPlaceholder.hidden = true;
   });
+
+  // Canvas initialization
+  function initCanvas() {
+    const c = document.querySelector('#htp-canvas');
+    if (!c) return;
+    htpDrawState.canvas = c;
+    htpDrawState.ctx = c.getContext('2d');
+    htpDrawState.undoStack = [];
+    htpDrawState.hasContent = false;
+    htpDrawState.tool = 'pen';
+
+    // Set initial white background
+    const ctx = htpDrawState.ctx;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+
+    // Tool buttons
+    document.querySelectorAll('.htp-tool-btn[data-tool]').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.dataset.tool === 'pen') btn.classList.add('active');
+    });
+
+    bindCanvasEvents();
+  }
+
+  function bindCanvasEvents() {
+    const c = document.querySelector('#htp-canvas');
+    if (!c) return;
+
+    // Clear canvas state
+    htpDrawState.canvas = c;
+    htpDrawState.ctx = c.getContext('2d');
+    htpDrawState.undoStack = [];
+    htpDrawState.hasContent = false;
+    htpDrawState.ctx.fillStyle = '#ffffff';
+    htpDrawState.ctx.fillRect(0, 0, c.width, c.height);
+
+    // Remove old listeners by cloning
+    const newCanvas = c.cloneNode(true);
+    c.parentNode.replaceChild(newCanvas, c);
+    htpDrawState.canvas = newCanvas;
+    htpDrawState.ctx = newCanvas.getContext('2d');
+    // Restore white background
+    htpDrawState.ctx.fillStyle = '#ffffff';
+    htpDrawState.ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+
+    newCanvas.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return; // left button only
+      e.preventDefault();
+      htpDrawState.drawing = true;
+
+      // Save state for undo
+      const imageData = htpDrawState.ctx.getImageData(0, 0, newCanvas.width, newCanvas.height);
+      htpDrawState.undoStack.push(imageData);
+      if (htpDrawState.undoStack.length > 50) htpDrawState.undoStack.shift();
+
+      const rect = newCanvas.getBoundingClientRect();
+      const scaleX = newCanvas.width / rect.width;
+      const scaleY = newCanvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      htpDrawState.ctx.beginPath();
+      htpDrawState.ctx.moveTo(x, y);
+      htpDrawState.ctx.lineCap = 'round';
+      htpDrawState.ctx.lineJoin = 'round';
+
+      if (htpDrawState.tool === 'eraser') {
+        htpDrawState.ctx.strokeStyle = '#ffffff';
+        htpDrawState.ctx.lineWidth = 24;
+      } else {
+        htpDrawState.ctx.strokeStyle = '#000000';
+        htpDrawState.ctx.lineWidth = 3;
+      }
+
+      // Hide placeholder on first draw
+      if (!htpDrawState.hasContent) {
+        htpDrawState.hasContent = true;
+        if (canvasPlaceholder) canvasPlaceholder.hidden = true;
+      }
+    });
+
+    newCanvas.addEventListener('pointermove', e => {
+      if (!htpDrawState.drawing) return;
+      e.preventDefault();
+      const rect = newCanvas.getBoundingClientRect();
+      const scaleX = newCanvas.width / rect.width;
+      const scaleY = newCanvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      htpDrawState.ctx.lineTo(x, y);
+      htpDrawState.ctx.stroke();
+    });
+
+    newCanvas.addEventListener('pointerup', () => {
+      htpDrawState.drawing = false;
+      updateCanvasPreview();
+    });
+
+    newCanvas.addEventListener('pointerleave', () => {
+      htpDrawState.drawing = false;
+    });
+
+    // Tool buttons
+    document.querySelectorAll('.htp-tool-btn[data-tool]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.htp-tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        htpDrawState.tool = btn.dataset.tool;
+      });
+    });
+
+    // Undo button
+    document.querySelector('#htp-undo-btn')?.addEventListener('click', () => {
+      if (htpDrawState.undoStack.length === 0) return;
+      const imageData = htpDrawState.undoStack.pop();
+      htpDrawState.ctx.putImageData(imageData, 0, 0);
+      htpDrawState.hasContent = htpDrawState.undoStack.length > 0 || !isCanvasBlank();
+      updateCanvasPreview();
+    });
+
+    // Clear button
+    document.querySelector('#htp-clear-btn')?.addEventListener('click', () => {
+      if (!htpDrawState.hasContent) return;
+      if (!confirm('确定清空画布吗？')) return;
+      htpDrawState.undoStack = [];
+      htpDrawState.ctx.fillStyle = '#ffffff';
+      htpDrawState.ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+      htpDrawState.hasContent = false;
+      if (canvasPlaceholder) canvasPlaceholder.hidden = false;
+      if (previewImage) previewImage.hidden = true;
+      if (placeholder) placeholder.removeAttribute('hidden');
+    });
+  }
+
+  function isCanvasBlank() {
+    const c = htpDrawState.canvas;
+    if (!c) return true;
+    const ctx = htpDrawState.ctx;
+    const data = ctx.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255) return false;
+    }
+    return true;
+  }
+
+  function updateCanvasPreview() {
+    if (!htpDrawState.canvas || !previewImage) return;
+    if (!htpDrawState.hasContent) return;
+    htpDrawState.canvas.toBlob(blob => {
+      if (!blob) return;
+      if (htpPreviewUrl) URL.revokeObjectURL(htpPreviewUrl);
+      htpPreviewUrl = URL.createObjectURL(blob);
+      previewImage.src = htpPreviewUrl;
+      previewImage.hidden = false;
+      if (placeholder) placeholder.setAttribute('hidden', '');
+    }, 'image/png');
+  }
+
   document.querySelector('#htp-form')?.addEventListener('submit', analyzeHtp);
   bindAnalysisHistory('htp-history', 'HTP');
 }
@@ -217,12 +436,26 @@ function sandplayMetrics() {
 }
 
 async function analyzeHtp(event) {
-  event.preventDefault(); const button = event.submitter; const form = event.currentTarget; const file = form.querySelector('#htp-file')?.files?.[0]; const result = document.querySelector('#htp-result');
-  if (!file) return toast('请选择作品图片', 'error'); setButtonBusy(button, true, '处理中…');
+  event.preventDefault(); const button = event.submitter; const form = event.currentTarget; const fileInput = form.querySelector('#htp-file'); const drawPanel = document.querySelector('#htp-draw-panel');
+  const isDrawMode = drawPanel && !drawPanel.hidden;
+  const result = document.querySelector('#htp-result');
+
+  let file;
+  if (isDrawMode) {
+    // Convert canvas to file
+    if (!htpDrawState.hasContent) return toast('请先在画布上绘制作品', 'error');
+    const blob = await new Promise(resolve => htpDrawState.canvas.toBlob(resolve, 'image/png'));
+    if (!blob) return toast('无法导出画布内容', 'error');
+    file = new File([blob], `htp-drawing-${Date.now()}.png`, { type: 'image/png' });
+  } else {
+    file = fileInput?.files?.[0];
+  }
+  if (!file) return toast('请选择作品图片或切换到绘制模式', 'error');
+  setButtonBusy(button, true, '处理中…');
   try {
     const metadata = await imageMetadata(file); const upload = new FormData(); upload.append('file', file);
     const saved = await api('/files?moduleCode=MULTIMODAL_AGENT&sensitivityLevel=L2', { method:'POST', body:upload }); const fields = Object.fromEntries(new FormData(form)); delete fields.file; delete fields.consent;
-    const observations = [`已保存匿名作品（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
+    const observations = [`已保存匿名作品（${metadata.width} × ${metadata.height}，${formatBytes(file.size)}${isDrawMode ? '，现场绘制' : ''}）。`, `用户故事共 ${String(fields.story || '').length} 个字符，并分别补充了房屋、树木和人物说明。`, '当前轻量版本不根据图形位置、大小或笔触自动推断人格与心理状态。'];
     const workflow = await runTrackedAnalysis({
       api,
       taskType: 'HTP_ANALYSIS',
@@ -256,7 +489,7 @@ async function sendAssistantMessage(message) {
     const contexts = window.__mindlineContexts || {};
     const gateway = await invokeGateway('companion.chat', { message, history:assistantState.messages.filter(item => !item.pending).slice(-8), moduleContexts: Object.keys(contexts).length ? contexts : undefined });
     placeholder.text = extractGatewayText(gateway) || '当前真实陪伴Agent尚未配置，但统一网关已收到请求。你可以尝试描述一个具体情境、当时的感受和希望采取的小行动。';
-  } catch (error) { placeholder.text = `AI网关暂不可用。先把问题缩小一点：在“${message.slice(0,40)}”这件事里，你最想先处理哪一个部分？`; }
+  } catch (error) { placeholder.text = `AI网关暂不可用。先把问题缩小一点：在"${message.slice(0,40)}"这件事里，你最想先处理哪一个部分？`; }
   placeholder.pending = false; renderAssistantMessages();
 }
 
