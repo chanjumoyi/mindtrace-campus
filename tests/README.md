@@ -1,14 +1,7 @@
-# 测试资产
+# 测试
 
-```text
-tests/
-├─ unit/           # Java领域逻辑与规则
-├─ contract/       # OpenAPI/JSON Schema
-├─ integration/    # PostgreSQL、Mock Adapter、苍穹联调
-├─ e2e/            # 两条核心业务闭环
-├─ ai-eval/        # RAG、Agent、工具调用和安全评测
-└─ security/       # 权限、注入、泄漏和审计测试
-```
+- `pytest tests`：FastAPI、安全分流和笔迹算法测试。
+- `node tests/test_pointer_normalization.cjs`：浏览器手写笔采样归一化测试。
+- `npm run build --prefix frontend`：Vue 3 生产构建验证。
 
-测试用例只使用 `data/mock/` 中的模拟数据。高风险流程必须覆盖漏报、误报、重复建单、工具超时和人工接管。
-
+测试数据必须是合成数据，不得包含参与者身份、真实笔迹、量表或私人对话。

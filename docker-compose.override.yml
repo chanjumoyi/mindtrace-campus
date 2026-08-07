@@ -1,4 +1,0 @@
-services:
-  backend:
-    environment:
-      SPRING_JPA_HIBERNATE_DDL_AUTO: none

@@ -1,41 +1,32 @@
-# Local planning and assistant workspaces
-openspec/
-.claude/
-.codex/
-
-# Kingdee online-environment mirror kept outside normal Git changes
-cosmic/
-
-# Private research data and copyrighted derived material
-data/handwriting-private/
-references/private/
-
-# Local secrets and environment overrides
+# Secrets and local overrides
 .env
 .env.*
 !.env.example
 
-# Java and Maven build artifacts
-target/
-**/target/
-*.class
-
-# Python artifacts and virtual environments
+# Dependencies and build output
+node_modules/
+.npm-cache/
+frontend/dist/
+.venv/
+venv/
 __pycache__/
 *.py[cod]
-.venv/
-.venv-*/
-venv/
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Node.js dependencies
-node_modules/
+# Sensitive research data and generated models
+research/private/
+research/handwriting/private/
+research/handwriting/models/*.json
+!research/handwriting/models/.gitkeep
 
-# Temporary files, logs, and coverage output
+# Local databases, logs and temporary files
+*.db
+*.sqlite3
+*.log
 tmp/
 temp/
-*.log
-coverage/
-.coverage
 
 # IDE and operating-system files
 .idea/

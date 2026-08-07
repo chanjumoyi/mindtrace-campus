@@ -1,0 +1,20 @@
+version: 1
+name: htp-analysis
+description: 房树人作品的客观观察与探索问题生成流程
+steps:
+  - id: validate
+    action: validate_schema
+    input_schema: backend/app/contracts/schemas/htp-questionnaire.schema.json
+  - id: observe
+    action: extract_visible_features
+    safety: no_personality_inference
+  - id: retrieve
+    action: retrieve_reviewed_knowledge
+    tool: get_rag_context
+  - id: explain
+    action: invoke_llm
+    prompt: research/ai/prompts/htp-analysis-agent-v1.md
+    safety: non_diagnostic
+  - id: persist
+    action: save_research_record
+    requires_consent: true

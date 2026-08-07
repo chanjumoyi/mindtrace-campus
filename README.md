@@ -1,141 +1,67 @@
 # 心迹AI（MindLine）
 
-面向高校学生的心理健康智能关爱平台，中国软件杯 A6“新质校园智能体应用”参赛项目。
+心迹AI是面向大学生的心理健康智能交互平台。项目依据《心迹AI——大学生心理健康智能交互平台立项报告》重整，采用 Vue 3、FastAPI 与 MySQL，围绕日常对话、电子手账、情绪记录、笔迹行为、房树人、心理沙盘、冥想练习和心理科普展开。
 
-项目以金蝶 AI 苍穹为核心底座，围绕笔迹分析、房树人（HTP）、心理沙盘和 AI 陪伴构建多模态智能体应用，形成“感知—观察—评估—干预—转介—随访—复盘”的业务闭环。
+> 安全边界：平台只提供心理健康教育、日常支持和非诊断性辅助观察，不替代心理咨询师、医疗机构或紧急服务。笔迹、绘画和沙盘结果不能单独用于人格判断或医学诊断。
 
-> 产品定位：提供心理健康教育、日常支持、风险筛查和专业转介辅助；不进行医学诊断，不替代心理咨询师或医疗机构。
+## 当前范围
 
-## 核心模块
+- 核心产品：AI陪伴、情绪打卡、电子手账、冥想与科普。
+- 探索模块：笔迹行为特征、房树人辅助观察、AI辅助沙盘。
+- 数据原则：最小化采集、显式授权、敏感数据隔离、可删除、可审计。
+- 评估计划：在伦理审查和知情同意后，使用 PHQ-9、GAD-7、PSS 等标准工具开展前后测；量表分数不等于诊断。
 
-| 模块 | 当前能力 | 主要技术 |
+## 技术栈
+
+| 层 | 技术 | 职责 |
 |---|---|---|
-| 动态笔迹分析 | Pencil 轨迹采集、压力/速度/停顿特征、个人基线、原型评分 | Pointer Events、Python、岭回归 |
-| 笔迹知识库 | 《笔迹心理学》OCR、带页码分块、假设审核、本地检索 | Windows OCR、RAG、规则审计 |
-| 房树人分析 | 作品上传、问卷补充、AI 辅助说明、任务状态追踪 | 文件中心、统一 AI 网关、任务状态机 |
-| 心理沙盘 | 元素拖拽、布局计算、AI 辅助说明、任务状态追踪 | Canvas、统一 AI 网关、任务状态机 |
-| 公共平台 | 登录、权限、文件、审计、AI 网关、任务状态 | Spring Boot、PostgreSQL、Docker |
-| 苍穹迁移 | KWC 组件、Java 插件、Agent 工具和领域模型资产 | 金蝶 AI 苍穹、KWC、Java |
+| Web | Vue 3 + Vite | 响应式学生端与研究功能入口 |
+| API | Python 3.12 + FastAPI | REST API、安全策略与多模态编排 |
+| 数据 | MySQL 8.4 | 用户授权、手账、打卡与研究记录 |
+| AI | DeepSeek 或兼容 LLM，默认 Mock | 支持性对话、可解释摘要与安全降级 |
+| 部署 | Docker Compose | 本地一键启动与环境隔离 |
 
 ## 快速开始
 
-### 1. Windows 一键启动完整工作台（推荐）
-
-直接双击仓库根目录的 `run.cmd` 即可以 Mock 模式启动，无需配置模型密钥。命令行也可选择模式：
-
 ```powershell
-.\run.cmd          # 本地 Mock，开箱即用
-.\run.cmd qwen     # 使用 Qwen，启动时安全输入 API Key
+Copy-Item .env.example .env
+docker compose up --build
 ```
 
-在 Windows PowerShell 中运行：
+启动后访问：
+
+- Web：`http://localhost:8080`
+- API 文档：`http://localhost:8000/docs`
+- 健康检查：`http://localhost:8000/health`
+
+前后端独立开发：
 
 ```powershell
-Set-Location D:\project\mindLine
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_mindline.ps1
+python -m venv .venv
+.\.venv\Scripts\pip install -r backend\requirements-dev.txt
+$env:DATABASE_URL='sqlite:///./mindline-dev.db'
+.\.venv\Scripts\uvicorn app.main:app --app-dir backend --reload
+
+Set-Location frontend
+npm install
+npm run dev
 ```
 
-脚本会启动 Docker Desktop（如尚未运行）、构建并启动全部服务、等待健康检查，并验证动态笔迹和 AI 陪伴两个服务都已切换到 Qwen 且凭证已注入。API Key 只写入当前 PowerShell 进程，不保存到项目文件。
-
-不调用真实模型、只验证本地完整链路时：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_mindline.ps1 -LlmMode mock
-```
-
-启动成功后访问：
-
-- 综合工作台：`http://localhost:8088`
-- 动态笔迹测试：`http://localhost:8091/collector/`
-- 后端健康检查：`http://localhost:8080/actuator/health`
-- 笔迹服务健康检查：`http://localhost:8091/api/v1/health`
-- AI 陪伴服务健康检查：`http://localhost:8090/health`
-
-模拟账号：
-
-- `student_demo / demo123`
-- `counselor_demo / demo123`
-- `admin_demo / admin123`
-
-### 2. 运行 Windows 全栈烟测
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\smoke_test.ps1
-```
-
-烟测会验证前端、四个服务健康状态、登录、个人资料、导航、任务状态机、AI 网关和幂等重放。每次运行会在本地演示数据库中新增一条 `SMOKE_TEST` 任务及相关审计记录。
-
-### 3. 单独启动笔迹采集器
-
-如只需要采集笔迹、不启动完整工作台：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_handwriting_collector.ps1
-```
-
-脚本会输出电脑本机地址和供同一 Wi-Fi 下平板访问的地址。采集页面默认只接受触控笔输入；PC 调试模式需手动开启。
-
-### 4. 停止完整工作台
-
-```powershell
-docker compose down
-```
-
-## 笔迹数据与模型流程
-
-原始笔迹和心理自评属于敏感研究数据，只保存在 `data/handwriting-private/`，不得提交到 Git 仓库。
-
-```powershell
-# 检查单条轨迹
-python scripts\inspect_handwriting_trace.py path\to\trace.json
-
-# 生成全部结构化特征
-python scripts\build_handwriting_dataset.py
-
-# 训练并执行留一参与者评估
-python scripts\train_handwriting_baseline.py
-
-# 检索本地书籍知识库
-python scripts\search_handwriting_book.py "书写速度 下笔重 综合分析" --top-k 3
-```
-
-当前模型用于比赛原型和工程链路验证。正式评估必须按参与者划分训练集与测试集，禁止随机拆分同一人的重复样本后宣称泛化准确率。
-
-## 项目结构
+## 目录
 
 ```text
 mindLine/
-├─ ai/                    # Agent Prompt、工作流、工具定义、公开RAG语料
-├─ contracts/             # OpenAPI、JSON Schema、错误码和字段映射
-├─ data/                  # 模拟数据；私人笔迹目录由Git忽略
-├─ database/              # PostgreSQL DDL、迁移和种子数据
-├─ deliverables/          # PPT、演示视频、设计说明书和测试报告
-├─ docs/                  # 项目、比赛和技术文档
-├─ kingdee/               # 苍穹低代码、KWC、Agent和部署资产
-├─ knowledge/             # 笔迹书籍假设、RAG清单和安全策略
-├─ local/                 # Java服务、前端原型、采集器和Mock Agent
-├─ references/private/    # 私有OCR文本和知识分块，不进入Git
-├─ scripts/               # 数据、模型、OCR、校验和启动脚本
-└─ tests/                 # 契约、集成、端到端和安全测试
+├─ frontend/                 # Vue 3 Web 应用与沙盘/笔迹交互资源
+├─ backend/                  # FastAPI、MySQL 数据模型、AI 与笔迹服务
+├─ research/                 # Prompt、工作流、公开知识、算法与实验脚本
+├─ docs/                     # 与立项报告一致的架构、范围和安全文档
+├─ tests/                    # 后端、算法和前端纯逻辑测试
+├─ docker-compose.yml        # MySQL + FastAPI + Vue/Nginx
+└─ .env.example              # 不含密钥的配置模板
 ```
 
-## 重要文档
+详细取舍见 [立项报告对齐说明](docs/立项报告对齐说明.md) 和 [系统架构](docs/系统架构.md)。
 
-- [项目总方案](docs/项目总方案.md)
-- [整体技术路线](docs/心迹AI整体技术路线.md)
-- [MVP与迁移进度](docs/MVP方案-迁移方法-当前进度.md)
-- [笔迹采集与数据集方案](docs/handwriting/01-采集与数据集起步方案.md)
-- [笔迹证据矩阵](docs/handwriting/03-笔迹心理学证据矩阵.md)
-- [苍穹迁移方案](docs/苍穹迁移方案.md)
-- [测试报告模板](docs/测试报告-模板.md)
+## 研究数据
 
-## 数据、安全与伦理
-
-- 比赛和演示只使用模拟数据或取得明确同意的匿名样本。
-- 笔迹书籍内容只作为待验证假设和解释材料，不作为真实心理标签。
-- 单一笔迹特征不得直接生成性格定论、疾病诊断或危机等级。
-- Agent 输出应区分“客观观察—待验证主题—探索问题”，并保留依据、页码和审计记录。
-
-## 当前阶段
-
-本地已完成沙盘、HTP、动态笔迹采集、特征工程、基线模型、书籍 OCR/RAG 和 AI 对话原型。苍穹环境到位后，重点完成真实 Agent 注册、知识库向量索引、工具接入、KWC 组件迁移和端到端演示闭环。
+真实对话、笔迹、量表、身份信息和参与者数据不得提交到 Git。所有本地敏感数据只允许放入 `research/private/` 或 `research/handwriting/private/`。仓库内示例必须是合成或充分匿名的数据。

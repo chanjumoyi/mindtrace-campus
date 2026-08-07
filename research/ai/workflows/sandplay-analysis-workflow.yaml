@@ -1,0 +1,20 @@
+version: 1
+name: sandplay-analysis
+description: 心理沙盘的非诊断性结构化观察流程
+steps:
+  - id: validate
+    action: validate_schema
+    input_schema: backend/app/contracts/schemas/sandplay-element.schema.json
+  - id: observe
+    action: calculate_layout_features
+    service: backend.app.services.sandplay
+  - id: retrieve
+    action: retrieve_reviewed_knowledge
+    tool: get_rag_context
+  - id: explain
+    action: invoke_llm
+    prompt: research/ai/prompts/sandplay-analysis-agent-v1.md
+    safety: non_diagnostic
+  - id: persist
+    action: save_research_record
+    requires_consent: true

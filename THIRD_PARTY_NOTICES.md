@@ -1,3 +1,5 @@
 # Third-party notices
 
-本项目源码引用或运行时使用：Spring Boot、Spring Framework、Spring Security、Hibernate ORM、Flyway、PostgreSQL JDBC、H2、PostgreSQL、Nginx、Node.js 与 Docker 官方镜像。具体许可证以对应发行包为准。仓库未包含金蝶苍穹专有 SDK/JAR，也未再分发任何字体文件或真实业务数据。
+本项目运行时使用 Vue、Vite、FastAPI、Uvicorn、SQLAlchemy、PyMySQL、Pydantic、MySQL、Nginx、Node.js、Python 与 Docker 官方镜像。具体许可证以对应发行包为准。
+
+`frontend/src/assets/sandplay/` 中的 SVG 元素由本项目原仓库迁移，继续作为心迹AI沙盘原型素材使用。仓库不包含模型供应商 SDK、字体文件、API 密钥或真实参与者数据。
