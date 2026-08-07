@@ -4,7 +4,6 @@ from fastapi import APIRouter
 
 from ...schemas import ChatRequest, ChatResponse
 
-
 router = APIRouter()
 DISCLAIMER = "本平台提供心理健康教育和日常支持，不构成医学诊断，也不替代专业咨询或治疗。"
 CRISIS_TERMS = ("自杀", "不想活", "结束生命", "伤害自己", "伤害别人")

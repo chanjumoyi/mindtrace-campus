@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException
 from ...services.handwriting.analyzer import TraceValidationError, analyse_trace
 from ...services.handwriting.llm import HandwritingLlmExplainer
 
-
 router = APIRouter()
 explainer = HandwritingLlmExplainer()
 

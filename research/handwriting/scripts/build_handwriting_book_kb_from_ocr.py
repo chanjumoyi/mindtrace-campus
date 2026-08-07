@@ -11,7 +11,6 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-
 KEYWORDS = [
     "书写速度",
     "书写力度",
@@ -88,9 +87,10 @@ def main() -> int:
     keyword_pages: dict[str, list[int]] = defaultdict(list)
     candidates: list[dict[str, object]] = []
     chunk_count = 0
-    with (args.output_dir / "pages.jsonl").open("w", encoding="utf-8") as page_handle, (
-        args.output_dir / "chunks.jsonl"
-    ).open("w", encoding="utf-8") as chunk_handle:
+    with (
+        (args.output_dir / "pages.jsonl").open("w", encoding="utf-8") as page_handle,
+        (args.output_dir / "chunks.jsonl").open("w", encoding="utf-8") as chunk_handle,
+    ):
         for page in pages:
             page_number = int(page["pdfPage"])
             text = str(page["text"])

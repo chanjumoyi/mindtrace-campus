@@ -58,9 +58,10 @@ def main() -> int:
     chunk_path = args.output_dir / "chunks.jsonl"
     page_char_counts: list[int] = []
     chunk_count = 0
-    with page_path.open("w", encoding="utf-8") as page_handle, chunk_path.open(
-        "w", encoding="utf-8"
-    ) as chunk_handle:
+    with (
+        page_path.open("w", encoding="utf-8") as page_handle,
+        chunk_path.open("w", encoding="utf-8") as chunk_handle,
+    ):
         for page_index, page in enumerate(reader.pages, start=1):
             text = normalize(page.extract_text() or "")
             page_char_counts.append(len(text))

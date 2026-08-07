@@ -13,7 +13,6 @@ from typing import Any
 from .baseline import HandwritingBaselinePredictor
 from .features import extract
 
-
 MODEL_VERSION = "handwriting-observation-v0.2-local"
 MIN_POINTS = 20
 MIN_STROKES = 3
@@ -25,7 +24,7 @@ class TraceValidationError(ValueError):
 
 
 def _number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     value = float(value)
     return value if math.isfinite(value) else None
@@ -55,7 +54,9 @@ def validate_trace(trace: Any) -> list[dict[str, Any]]:
     return valid_points
 
 
-def _quality(trace: dict[str, Any], points: list[dict[str, Any]], features: dict[str, Any]) -> tuple[float, list[str]]:
+def _quality(
+    trace: dict[str, Any], points: list[dict[str, Any]], features: dict[str, Any]
+) -> tuple[float, list[str]]:
     warnings: list[str] = list(features.get("warnings") or [])
     point_count = len(points)
     stroke_count = int(features["counts"]["strokes"])

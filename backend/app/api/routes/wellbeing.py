@@ -8,7 +8,6 @@ from ...core.database import get_db
 from ...models import JournalEntry, MoodEntry
 from ...schemas import JournalCreate, JournalRead, MoodCreate, MoodRead
 
-
 router = APIRouter()
 
 

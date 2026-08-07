@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from http.client import RemoteDisconnected
 from typing import Any
 
-
 DISCLAIMER = "笔迹结果仅用于观察本次书写行为和自我探索，不构成心理评估、人格判断或医学诊断。"
 FORBIDDEN_TERMS = ("诊断为", "患有", "人格障碍", "心理疾病", "抑郁症", "焦虑症", "精神疾病")
 
@@ -27,7 +26,7 @@ class LlmConfig:
     max_attempts: int = 3
 
     @classmethod
-    def from_env(cls) -> "LlmConfig":
+    def from_env(cls) -> LlmConfig:
         return cls(
             mode=os.getenv("HANDWRITING_LLM_MODE", "mock").strip().lower(),
             api_key=(os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY") or "").strip(),
@@ -45,7 +44,9 @@ class HandwritingLlmExplainer:
         self.config = config or LlmConfig.from_env()
 
     def health(self) -> dict[str, Any]:
-        configured = self.config.mode == "qwen" and bool(self.config.api_key and self.config.base_url)
+        configured = self.config.mode == "qwen" and bool(
+            self.config.api_key and self.config.base_url
+        )
         return {
             "mode": self.config.mode,
             "provider": "qwen" if self.config.mode == "qwen" else "mock",
@@ -157,7 +158,11 @@ class HandwritingLlmExplainer:
         content = payload["choices"][0]["message"]["content"]
         parsed = self._parse_json(content)
         summary = str(parsed.get("summary", "")).strip()
-        questions = [str(item).strip() for item in parsed.get("explorationQuestions", []) if str(item).strip()]
+        questions = [
+            str(item).strip()
+            for item in parsed.get("explorationQuestions", [])
+            if str(item).strip()
+        ]
         if not summary or not 2 <= len(questions) <= 3:
             raise ValueError("Qwen response does not match the required schema")
         combined = summary + " " + " ".join(questions)
@@ -176,8 +181,14 @@ class HandwritingLlmExplainer:
 
     def _mock(self, analysis: dict[str, Any], status: str, note: str) -> dict[str, Any]:
         observations = analysis.get("observations") or []
-        descriptions = [str(item.get("description", "")) for item in observations[:3] if item.get("description")]
-        summary = "本次记录的客观特征包括：" + "；".join(descriptions) if descriptions else "当前数据不足以形成稳定的客观摘要。"
+        descriptions = [
+            str(item.get("description", "")) for item in observations[:3] if item.get("description")
+        ]
+        summary = (
+            "本次记录的客观特征包括：" + "；".join(descriptions)
+            if descriptions
+            else "当前数据不足以形成稳定的客观摘要。"
+        )
         return {
             "status": status,
             "provider": "mock",

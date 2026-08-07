@@ -7,12 +7,13 @@ import argparse
 import json
 import math
 import statistics
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 def finite(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     number = float(value)
     return number if math.isfinite(number) else None
@@ -129,7 +130,7 @@ def extract(payload: dict[str, Any], points: list[dict[str, Any]]) -> dict[str, 
             if yn is not None:
                 y_norms.append(yn)
 
-        for previous, current in zip(stroke, stroke[1:]):
+        for previous, current in zip(stroke, stroke[1:], strict=False):
             previous_time = previous.get("elapsedMs")
             current_time = current.get("elapsedMs")
             x1, y1 = finite(previous.get("x")), finite(previous.get("y"))
@@ -164,9 +165,7 @@ def extract(payload: dict[str, Any], points: list[dict[str, Any]]) -> dict[str, 
     elapsed_values = [
         point["elapsedMs"] for point in points if isinstance(point.get("elapsedMs"), int)
     ]
-    task_duration_ms = (
-        max(elapsed_values) - min(elapsed_values) if len(elapsed_values) >= 2 else 0
-    )
+    task_duration_ms = max(elapsed_values) - min(elapsed_values) if len(elapsed_values) >= 2 else 0
     total_pause_ms = sum(pen_up_pauses)
     long_pauses = [pause for pause in pen_up_pauses if pause >= 500]
 

@@ -8,11 +8,10 @@ import csv
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from zipfile import ZipFile
-
 
 STAMP_RE = re.compile(
     r"^(?P<participant>self-\d+)(?:_(?P<task>copy-v1|free-v1))?_(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.(?P<ext>json|png)$"
@@ -24,9 +23,9 @@ def parse_name(name: str) -> dict[str, Any] | None:
     if not match:
         return None
     values = match.groupdict()
-    values["datetime"] = datetime.strptime(
-        values["stamp"], "%Y-%m-%dT%H-%M-%S-%fZ"
-    ).replace(tzinfo=timezone.utc)
+    values["datetime"] = datetime.strptime(values["stamp"], "%Y-%m-%dT%H-%M-%S-%fZ").replace(
+        tzinfo=UTC
+    )
     return values
 
 
@@ -60,9 +59,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="导入心迹AI批量轨迹和预览图")
     parser.add_argument("trajectory_zip", type=Path)
     parser.add_argument("image_zip", type=Path)
-    parser.add_argument(
-        "--private-root", type=Path, default=Path("research/handwriting/private")
-    )
+    parser.add_argument("--private-root", type=Path, default=Path("research/handwriting/private"))
     args = parser.parse_args()
     root = args.private_root.resolve()
     manifest_path = root / "manifests" / "sessions.csv"
@@ -72,7 +69,10 @@ def main() -> int:
     shutil.copy2(args.trajectory_zip, archive_dir / args.trajectory_zip.name)
     shutil.copy2(args.image_zip, archive_dir / args.image_zip.name)
 
-    with ZipFile(args.trajectory_zip) as trajectory_archive, ZipFile(args.image_zip) as image_archive:
+    with (
+        ZipFile(args.trajectory_zip) as trajectory_archive,
+        ZipFile(args.image_zip) as image_archive,
+    ):
         json_entries: list[dict[str, Any]] = []
         for name in trajectory_archive.namelist():
             parsed = parse_name(name)

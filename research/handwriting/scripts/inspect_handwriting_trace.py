@@ -24,8 +24,15 @@ def analyse(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     required = [
-        "schemaVersion", "sessionId", "participantId", "task",
-        "device", "canvas", "timing", "summary", "points",
+        "schemaVersion",
+        "sessionId",
+        "participantId",
+        "task",
+        "device",
+        "canvas",
+        "timing",
+        "summary",
+        "points",
     ]
     for key in required:
         if key not in payload:
@@ -74,10 +81,7 @@ def analyse(payload: dict[str, Any]) -> dict[str, Any]:
             elapsed.append(elapsed_ms)
         x_norm = finite_number(point.get("xNorm"))
         y_norm = finite_number(point.get("yNorm"))
-        if (
-            x_norm is None or y_norm is None
-            or not 0 <= x_norm <= 1 or not 0 <= y_norm <= 1
-        ):
+        if x_norm is None or y_norm is None or not 0 <= x_norm <= 1 or not 0 <= y_norm <= 1:
             invalid_coordinates += 1
 
     if sequences and sequences != sorted(sequences):
@@ -87,11 +91,11 @@ def analyse(payload: dict[str, Any]) -> dict[str, Any]:
 
     intervals = [
         current - previous
-        for previous, current in zip(elapsed, elapsed[1:])
+        for previous, current in zip(elapsed, elapsed[1:], strict=False)
         if current >= previous
     ]
     negative_intervals = sum(
-        1 for previous, current in zip(elapsed, elapsed[1:]) if current < previous
+        1 for previous, current in zip(elapsed, elapsed[1:], strict=False) if current < previous
     )
     if negative_intervals:
         errors.append(f"发现{negative_intervals}个倒序时间点")
@@ -123,9 +127,7 @@ def analyse(payload: dict[str, Any]) -> dict[str, Any]:
         "invalidCoordinateCount": invalid_coordinates,
         "errors": errors,
         "warnings": warnings,
-        "usableForDeviceCheck": (
-            not errors and len(points) >= 20 and len(stroke_ids) >= 3
-        ),
+        "usableForDeviceCheck": (not errors and len(points) >= 20 and len(stroke_ids) >= 3),
     }
 
 
@@ -143,7 +145,7 @@ def describe(values: list[float | int]) -> dict[str, float | int | None]:
 
 
 def finite_number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     numeric = float(value)
     return numeric if math.isfinite(numeric) else None
@@ -197,9 +199,7 @@ def self_test_payload() -> dict[str, Any]:
                 {
                     "strokeId": stroke_id,
                     "sequence": sequence,
-                    "phase": (
-                        "down" if offset == 0 else "up" if offset == 7 else "move"
-                    ),
+                    "phase": ("down" if offset == 0 else "up" if offset == 7 else "move"),
                     "pointerType": "pen",
                     "elapsedMs": sequence * 12,
                     "xNorm": min(1, 0.1 * stroke_id + offset * 0.01),

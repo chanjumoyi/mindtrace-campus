@@ -33,8 +33,7 @@ def flatten(row: dict[str, str], features: dict[str, Any]) -> dict[str, Any]:
     pressure_max = pick(features, "pressure", "max")
     pressure_range = (
         pressure_max - pressure_min
-        if isinstance(pressure_min, (int, float))
-        and isinstance(pressure_max, (int, float))
+        if isinstance(pressure_min, int | float) and isinstance(pressure_max, int | float)
         else 0
     )
     points = pick(features, "counts", "points") or 0
@@ -107,9 +106,7 @@ def flatten(row: dict[str, str], features: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="批量生成心迹AI笔迹特征数据集")
-    parser.add_argument(
-        "--private-root", type=Path, default=Path("research/handwriting/private")
-    )
+    parser.add_argument("--private-root", type=Path, default=Path("research/handwriting/private"))
     args = parser.parse_args()
     root = args.private_root.resolve()
     manifest = root / "manifests" / "sessions.csv"
@@ -145,7 +142,7 @@ def main() -> int:
 - 采集可用：{usable}
 - 参与者：{len(participants)}（{dict(participants)}）
 - 任务分布：{dict(tasks)}
-- 采集日期数：{len(set(row['date'] for row in flat_rows))}
+- 采集日期数：{len(set(row["date"] for row in flat_rows))}
 - 设备：华为平板 + Huawei Pencil；浏览器 Pointer Events
 
 ## 当前允许用途

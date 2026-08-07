@@ -8,9 +8,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_MODEL_PATH = REPO_ROOT / "research" / "handwriting" / "models" / "handwriting_ridge_v0.1.json"
+DEFAULT_MODEL_PATH = (
+    REPO_ROOT / "research" / "handwriting" / "models" / "handwriting_ridge_v0.1.json"
+)
 TARGET_LABELS = {
     "stress_level": "压力自评估计",
     "mood_level": "心情自评估计",
@@ -19,7 +20,7 @@ TARGET_LABELS = {
 
 
 def _finite(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     number = float(value)
     return number if math.isfinite(number) else None
@@ -42,8 +43,12 @@ def flatten_features(features: dict[str, Any]) -> dict[str, float | None]:
         "duration_ms": _finite(_pick(features, "timing", "taskDurationMs")),
         "long_pause_count": _finite(_pick(features, "counts", "longPauseCount")),
         "pen_up_ratio": _finite(_pick(features, "timing", "penUpRatio")),
-        "within_interval_p95_ms": _finite(_pick(features, "timing", "withinStrokeIntervalMs", "p95")),
-        "between_pause_median_ms": _finite(_pick(features, "timing", "betweenStrokePauseMs", "median")),
+        "within_interval_p95_ms": _finite(
+            _pick(features, "timing", "withinStrokeIntervalMs", "p95")
+        ),
+        "between_pause_median_ms": _finite(
+            _pick(features, "timing", "betweenStrokePauseMs", "median")
+        ),
         "between_pause_p95_ms": _finite(_pick(features, "timing", "betweenStrokePauseMs", "p95")),
         "pressure_mean": _finite(_pick(features, "pressure", "mean")),
         "pressure_std": _finite(_pick(features, "pressure", "std")),
@@ -85,7 +90,11 @@ class HandwritingBaselinePredictor:
         names = artifact["featureNames"]
         means = artifact["featureMeans"]
         scales = artifact["featureScales"]
-        if not isinstance(names, list) or not names or not (len(names) == len(means) == len(scales)):
+        if (
+            not isinstance(names, list)
+            or not names
+            or not (len(names) == len(means) == len(scales))
+        ):
             raise ValueError("feature metadata length mismatch")
         for target in TARGET_LABELS:
             model = artifact["targets"][target]
@@ -131,7 +140,8 @@ class HandwritingBaselinePredictor:
         for target, label in TARGET_LABELS.items():
             model = artifact["targets"][target]
             estimate = float(model["intercept"]) + sum(
-                value * float(weight) for value, weight in zip(values, model["coefficients"])
+                value * float(weight)
+                for value, weight in zip(values, model["coefficients"], strict=False)
             )
             scores[target] = {"label": label, "value": round(max(1.0, min(5.0, estimate)), 2)}
 

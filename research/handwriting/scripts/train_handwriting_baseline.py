@@ -13,7 +13,6 @@ from typing import Any
 
 import numpy as np
 
-
 NUMERIC_FEATURES = [
     "point_count",
     "stroke_count",
@@ -54,12 +53,14 @@ def matrix(rows: list[dict[str, str]]) -> tuple[np.ndarray, list[str]]:
     task_names = [f"task_{task}" for task in tasks[1:]]
     encoded = [
         value_row + [1.0 if row["task_type"] == task else 0.0 for task in tasks[1:]]
-        for row, value_row in zip(rows, values)
+        for row, value_row in zip(rows, values, strict=False)
     ]
     return np.asarray(encoded, dtype=float), NUMERIC_FEATURES + task_names
 
 
-def prepare(train_x: np.ndarray, test_x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def prepare(
+    train_x: np.ndarray, test_x: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     means = np.nanmean(train_x, axis=0)
     means = np.where(np.isfinite(means), means, 0.0)
     train = np.where(np.isnan(train_x), means, train_x)
@@ -124,9 +125,7 @@ def main() -> int:
         type=Path,
         default=Path("research/handwriting/private/features/modeling_dataset_v0.1.csv"),
     )
-    parser.add_argument(
-        "--output-dir", type=Path, default=Path("research/handwriting/models")
-    )
+    parser.add_argument("--output-dir", type=Path, default=Path("research/handwriting/models"))
     parser.add_argument("--alpha", type=float, default=10.0)
     args = parser.parse_args()
     with args.dataset.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -185,7 +184,9 @@ def main() -> int:
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_path = args.output_dir / "handwriting_ridge_v0.1.json"
-    model_path.write_text(json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    model_path.write_text(
+        json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
     lines = [
         "# 笔迹基线模型评估 v0.1",
