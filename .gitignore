@@ -34,3 +34,7 @@ temp/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local proposal copies contain personal contact information
+/心迹ai——大学生心理健康智能交互平台立项报告.docx
+/心迹ai——大学生心理健康智能交互平台立项报告.pdf
