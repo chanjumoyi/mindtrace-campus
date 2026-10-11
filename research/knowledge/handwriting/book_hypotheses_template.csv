@@ -1,2 +1,2 @@
-source_title,source_page,source_quote_or_summary,observable_feature,direction,task_scope,device_scope,confidence,validation_status,safety_note
-笔迹心理学,,,,,,,unrated,pending,仅作为待验证假设，不得直接作为心理诊断标签
+hypothesis_id,source_title,pdf_page,source_summary,observable_feature,implementation_field,direction,task_scope,confidence,measurement_status,evidence_status,safety_note
+H000,笔迹心理学,,,,,,,unrated,to_implement,pending,仅作为待验证假设，不得直接作为心理诊断标签

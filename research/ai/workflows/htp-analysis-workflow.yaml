@@ -16,5 +16,6 @@ steps:
     prompt: research/ai/prompts/htp-analysis-agent-v1.md
     safety: non_diagnostic
   - id: persist
-    action: save_research_record
+    action: save_observation_record
+    tool: save_htp_record
     requires_consent: true

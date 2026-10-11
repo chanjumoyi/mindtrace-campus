@@ -55,7 +55,12 @@ def matrix(rows: list[dict[str, str]]) -> tuple[np.ndarray, list[str]]:
         value_row + [1.0 if row["task_type"] == task else 0.0 for task in tasks[1:]]
         for row, value_row in zip(rows, values, strict=False)
     ]
-    return np.asarray(encoded, dtype=float), NUMERIC_FEATURES + task_names
+    if encoded:
+        return np.asarray(encoded, dtype=float), NUMERIC_FEATURES + task_names
+    # Keep the column shape so downstream statistics cannot collapse to shape (0,).
+    return np.zeros(
+        (len(rows), len(NUMERIC_FEATURES) + len(task_names))
+    ), NUMERIC_FEATURES + task_names
 
 
 def prepare(
@@ -66,7 +71,8 @@ def prepare(
     train = np.where(np.isnan(train_x), means, train_x)
     test = np.where(np.isnan(test_x), means, test_x)
     scales = np.std(train, axis=0)
-    scales = np.where(scales < 1e-9, 1.0, scales)
+    # A constant (or non-finite) column carries no signal; fall back to unit scale.
+    scales = np.where(np.isfinite(scales) & (scales >= 1e-9), scales, 1.0)
     return (train - means) / scales, (test - means) / scales, means, scales
 
 
@@ -78,12 +84,19 @@ def ridge_fit(x: np.ndarray, y: np.ndarray, alpha: float) -> tuple[float, np.nda
     return float(params[0]), params[1:]
 
 
-def metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
+def metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float | None]:
     error = predicted - actual
+    mae = float(np.mean(np.abs(error)))
+    rmse = float(np.sqrt(np.mean(error**2)))
+    # Non-finite metrics mean "not computable" and must never be serialized as NaN.
     return {
-        "mae": round(float(np.mean(np.abs(error))), 4),
-        "rmse": round(float(np.sqrt(np.mean(error**2))), 4),
+        "mae": round(mae, 4) if math.isfinite(mae) else None,
+        "rmse": round(rmse, 4) if math.isfinite(rmse) else None,
     }
+
+
+def fmt(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.4f}"
 
 
 def evaluate(
@@ -91,14 +104,17 @@ def evaluate(
     y: np.ndarray,
     folds: list[tuple[np.ndarray, np.ndarray]],
     alpha: float,
-) -> tuple[dict[str, float], dict[str, float]]:
-    predictions = np.empty(len(y))
-    mean_predictions = np.empty(len(y))
+) -> tuple[dict[str, float | None], dict[str, float | None]]:
+    predictions = np.full(len(y), np.nan)
+    mean_predictions = np.full(len(y), np.nan)
     for train, test in folds:
+        if len(train) == 0 or len(test) == 0:
+            continue
         train_x, test_x, _, _ = prepare(x[train], x[test])
         intercept, weights = ridge_fit(train_x, y[train], alpha)
         predictions[test] = np.clip(intercept + test_x @ weights, 1.0, 5.0)
-        mean_predictions[test] = np.mean(y[train])
+        # Clip the baseline too, otherwise the comparison flatters the model.
+        mean_predictions[test] = np.clip(np.mean(y[train]), 1.0, 5.0)
     return metrics(y, predictions), metrics(y, mean_predictions)
 
 
@@ -128,6 +144,11 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("research/handwriting/models"))
     parser.add_argument("--alpha", type=float, default=10.0)
     args = parser.parse_args()
+    if not args.dataset.is_file():
+        parser.error(
+            f"未找到建模数据集：{args.dataset}；私有数据不进仓库，"
+            "请先运行 build_handwriting_dataset.py 生成"
+        )
     with args.dataset.open("r", encoding="utf-8-sig", newline="") as handle:
         rows = [
             row
@@ -135,6 +156,11 @@ def main() -> int:
             if row.get("collection_usable", "").lower() == "true"
             and all(row.get(target) for target in TARGETS)
         ]
+    if not rows:
+        parser.error(
+            f"数据集没有可用样本：{args.dataset}；"
+            "需要 collection_usable=true 且三个自评标签齐全的行"
+        )
     x, feature_names = matrix(rows)
     participants = [row["participant_id"] for row in rows]
     group_cv = grouped_folds(participants)
@@ -148,6 +174,11 @@ def main() -> int:
         group_result, group_mean = evaluate(x, y, group_cv, args.alpha)
         random_result, random_mean = evaluate(x, y, random_cv, args.alpha)
         intercept, weights = ridge_fit(train_x, y, args.alpha)
+        if not (math.isfinite(intercept) and all(math.isfinite(float(v)) for v in weights)):
+            parser.error(
+                f"目标 {target} 的回归参数不是有限值（样本 {len(rows)} 条）；"
+                "请补充数据或调大 --alpha，不要写出损坏的模型文件"
+            )
         evaluation[target] = {
             "leaveOneParticipantOut": group_result,
             "leaveOneParticipantOutMeanBaseline": group_mean,
@@ -184,8 +215,11 @@ def main() -> int:
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_path = args.output_dir / "handwriting_ridge_v0.1.json"
+    # allow_nan=False keeps the artifact strict JSON; baseline.py would otherwise
+    # read a bare NaN back and report the maximum score for every target.
     model_path.write_text(
-        json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(artifact, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
     )
 
     lines = [
@@ -204,9 +238,9 @@ def main() -> int:
     for target in TARGETS:
         result = evaluation[target]
         lines.append(
-            f"| {labels[target]} | {result['leaveOneParticipantOut']['mae']:.4f} | "
-            f"{result['leaveOneParticipantOutMeanBaseline']['mae']:.4f} | "
-            f"{result['randomFiveFoldLeakageProne']['mae']:.4f} |"
+            f"| {labels[target]} | {fmt(result['leaveOneParticipantOut']['mae'])} | "
+            f"{fmt(result['leaveOneParticipantOutMeanBaseline']['mae'])} | "
+            f"{fmt(result['randomFiveFoldLeakageProne']['mae'])} |"
         )
     lines += [
         "",

@@ -14,7 +14,7 @@
       "properties": {
         "topic": {
           "type": "string",
-          "enum": ["sandplay", "htp", "general-psychology"],
+          "enum": ["sandplay", "htp", "handwriting", "general-psychology"],
           "description": "知识域主题过滤"
         },
         "query": {

@@ -12,6 +12,7 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -38,3 +39,5 @@ desktop.ini
 # Local proposal copies contain personal contact information
 /心迹ai——大学生心理健康智能交互平台立项报告.docx
 /心迹ai——大学生心理健康智能交互平台立项报告.pdf
+docs/心迹ai——大学生心理健康智能交互平台立项报告*.docx
+docs/心迹ai——大学生心理健康智能交互平台立项报告*.pdf

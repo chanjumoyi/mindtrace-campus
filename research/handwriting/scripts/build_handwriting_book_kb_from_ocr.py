@@ -66,21 +66,35 @@ def main() -> int:
     parser.add_argument(
         "--output-dir", type=Path, default=Path("research/handwriting/private/knowledge")
     )
+    parser.add_argument(
+        "--source-label",
+        default=None,
+        help="写入 pages/chunks 的来源名称，默认使用 OCR 文件名",
+    )
     args = parser.parse_args()
+    if not args.ocr.is_file():
+        parser.error(f"未找到 OCR 原始输出：{args.ocr}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    source_label = args.source_label or args.ocr.name
 
     pages: list[dict[str, object]] = []
     with args.ocr.open("r", encoding="utf-8-sig") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            record = json.loads(line)
+            try:
+                record = json.loads(line)
+                page_number = int(record["pdfPage"])
+            except (ValueError, KeyError, TypeError) as error:
+                parser.error(f"{args.ocr}:{line_number} 缺少可用的 pdfPage：{error}")
             pages.append(
                 {
-                    "pdfPage": int(record["pdfPage"]),
+                    "pdfPage": page_number,
                     "text": normalize(str(record.get("text", ""))),
                 }
             )
+    if not pages:
+        parser.error(f"OCR 文件没有有效页面：{args.ocr}")
     pages.sort(key=lambda row: int(row["pdfPage"]))
 
     source_hash = hashlib.sha256(args.ocr.read_bytes()).hexdigest()
@@ -96,7 +110,12 @@ def main() -> int:
             text = str(page["text"])
             page_handle.write(
                 json.dumps(
-                    {"source": "笔迹心理学.pdf", "pdfPage": page_number, "text": text},
+                    {
+                        "source": source_label,
+                        "sourceSha256": source_hash,
+                        "pdfPage": page_number,
+                        "text": text,
+                    },
                     ensure_ascii=False,
                 )
                 + "\n"
@@ -107,7 +126,8 @@ def main() -> int:
                     json.dumps(
                         {
                             "chunkId": f"book-p{page_number:03d}-c{index:02d}",
-                            "source": "笔迹心理学.pdf",
+                            "source": source_label,
+                            "sourceSha256": source_hash,
                             "pdfPage": page_number,
                             "text": value,
                             "usage": "hypothesis_only_not_diagnostic_label",
@@ -139,7 +159,7 @@ def main() -> int:
         writer.writerows(candidates)
 
     index = {
-        "source": "笔迹心理学.pdf",
+        "source": source_label,
         "ocrSha256": source_hash,
         "pages": len(pages),
         "pagesWithText": sum(bool(page["text"]) for page in pages),

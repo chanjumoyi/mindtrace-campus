@@ -38,3 +38,6 @@ class ChatResponse(BaseModel):
     reply: str
     risk_level: str
     disclaimer: str
+    provider: str = "mock"
+    model: str = "deterministic-mock"
+    degradation_note: str | None = None

@@ -44,20 +44,41 @@ def load(path: Path) -> dict[str, Any]:
     return payload
 
 
+def safe_participant(value: Any) -> str:
+    """participantId becomes a path component, so reject anything path-like."""
+    participant = str(value or "anonymous").strip()
+    if not participant or any(bad in participant for bad in ("/", "\\", "..", ":")):
+        raise ValueError(f"participantId 非法（不得包含路径字符）：{participant!r}")
+    return participant
+
+
 def sample_row(path: Path, payload: dict[str, Any], root: Path) -> dict[str, str]:
-    participant = str(payload.get("participantId") or "anonymous")
+    participant = safe_participant(payload.get("participantId"))
     timing = payload.get("timing") or {}
     started_at = timing.get("startedAt") or timing.get("createdAt") or datetime.now(UTC).isoformat()
     parsed = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # A naive timestamp must not silently be interpreted as machine-local time,
+        # otherwise sample ids differ between machines for identical input.
+        parsed = parsed.replace(tzinfo=UTC)
     date = parsed.date().isoformat()
     task_type = str((payload.get("task") or {}).get("type") or "unknown")
     suffix = "copy" if task_type == "copy_text" else "free"
     stamp = parsed.astimezone(UTC).strftime("%Y%m%dT%H%M%S%f")[:18] + "Z"
-    sample_id = f"sample-{participant}-{stamp}-{suffix}"
-    relative = Path("raw") / participant / date / sample_id / "trace.json"
-    target = (root / relative).resolve()
-    if root.resolve() not in target.parents:
-        raise ValueError("导入目标超出私有数据目录")
+    base_sample_id = f"sample-{participant}-{stamp}-{suffix}"
+    resolved_root = root.resolve()
+    sample_id = base_sample_id
+    index = 2
+    while True:
+        relative = Path("raw") / participant / date / sample_id / "trace.json"
+        target = (resolved_root / relative).resolve()
+        if resolved_root not in target.parents:
+            raise ValueError("导入目标超出私有数据目录")
+        if not target.exists():
+            break
+        # Same participant, timestamp and task: keep both traces instead of overwriting.
+        sample_id = f"{base_sample_id}-{index}"
+        index += 1
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, target)
     report = payload.get("selfReport") or {}
@@ -108,12 +129,16 @@ def main() -> int:
     known = {(row.get("original_json"), row.get("embedded_session_id")) for row in existing}
     imported = 0
     for path in args.paths:
-        payload = load(path)
-        key = (path.name, str(payload.get("sessionId", "")))
-        if key in known:
-            print(f"跳过重复样本: {path.name}")
+        try:
+            payload = load(path)
+            key = (path.name, str(payload.get("sessionId", "")))
+            if key in known:
+                print(f"跳过重复样本: {path.name}")
+                continue
+            row = sample_row(path, payload, root)
+        except (OSError, ValueError) as error:
+            print(f"跳过无法导入的文件 {path.name}: {type(error).__name__}: {error}")
             continue
-        row = sample_row(path, payload, root)
         existing.append(row)
         known.add(key)
         imported += 1

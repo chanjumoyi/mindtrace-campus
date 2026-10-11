@@ -66,12 +66,44 @@ def flatten_features(features: dict[str, Any]) -> dict[str, float | None]:
     }
 
 
+KNOWN_FEATURE_NAMES = frozenset(flatten_features({}))
+# A model artifact may add one binary dummy per task type; everything else must be known.
+TASK_FEATURE_PREFIX = "task_"
+
+
+def _is_known_feature(name: Any) -> bool:
+    return isinstance(name, str) and (
+        name in KNOWN_FEATURE_NAMES or name.startswith(TASK_FEATURE_PREFIX)
+    )
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def clamp_score(value: float) -> float:
+    """Clamp to the 1-5 self-report range; a non-finite estimate degrades to the midpoint."""
+    if not math.isfinite(value):
+        return 3.0
+    return round(max(1.0, min(5.0, value)), 2)
+
+
 class HandwritingBaselinePredictor:
     """Loads a generated artifact without exposing participant data in responses."""
 
     def __init__(self, model_path: str | Path | None = None) -> None:
         configured = model_path or os.getenv("HANDWRITING_MODEL_PATH")
-        self.path = Path(configured).expanduser() if configured else DEFAULT_MODEL_PATH
+        if configured:
+            candidate = Path(configured).expanduser()
+            # Resolve relative overrides against the repository, not the current directory,
+            # so the model is found no matter where the process was started.
+            self.path = candidate if candidate.is_absolute() else REPO_ROOT / candidate
+        else:
+            self.path = DEFAULT_MODEL_PATH
         self.artifact: dict[str, Any] | None = None
         self.error: str | None = None
         try:
@@ -90,16 +122,29 @@ class HandwritingBaselinePredictor:
         names = artifact["featureNames"]
         means = artifact["featureMeans"]
         scales = artifact["featureScales"]
-        if (
-            not isinstance(names, list)
-            or not names
-            or not (len(names) == len(means) == len(scales))
-        ):
+        if not isinstance(names, list) or not names:
+            raise ValueError("featureNames must be a non-empty list")
+        if not (len(names) == len(means) == len(scales)):
             raise ValueError("feature metadata length mismatch")
+        unknown = [name for name in names if not _is_known_feature(name)]
+        if unknown:
+            # Without this the predictor silently imputes unknown features from the
+            # means and still reports EXPERIMENTAL scores.
+            raise ValueError(
+                f"unknown feature names: {', '.join(str(name) for name in unknown[:5])}"
+            )
+        for label, values in (("featureMeans", means), ("featureScales", scales)):
+            if not all(_is_finite_number(value) for value in values):
+                raise ValueError(f"{label} must contain only finite numbers")
         for target in TARGET_LABELS:
             model = artifact["targets"][target]
-            if len(model["coefficients"]) != len(names):
+            coefficients = model["coefficients"]
+            if len(coefficients) != len(names):
                 raise ValueError("coefficient length mismatch")
+            if not _is_finite_number(model["intercept"]) or not all(
+                _is_finite_number(value) for value in coefficients
+            ):
+                raise ValueError("model parameters must be finite numbers")
 
     def health(self) -> dict[str, Any]:
         artifact = self.artifact or {}
@@ -143,7 +188,7 @@ class HandwritingBaselinePredictor:
                 value * float(weight)
                 for value, weight in zip(values, model["coefficients"], strict=False)
             )
-            scores[target] = {"label": label, "value": round(max(1.0, min(5.0, estimate)), 2)}
+            scores[target] = {"label": label, "value": clamp_score(estimate)}
 
         return {
             "status": "EXPERIMENTAL",

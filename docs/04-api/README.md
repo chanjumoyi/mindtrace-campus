@@ -27,13 +27,12 @@
 
 ## 接口清单
 
-- 系统：`GET /health`、`GET /modules`
-- 认证：`POST /auth/register`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`
+- 系统：`GET /health`、`GET /modules`- 认证：`POST /auth/register`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`
 - 授权与数据权利：`GET|POST /consents`、`POST /account/export`、`DELETE /account`
 - 情绪：`GET|POST /wellbeing/moods`、`GET /wellbeing/moods/trend`、`DELETE /wellbeing/moods/{id}`
 - 手账：`GET|POST /wellbeing/journals`、`GET|PUT|DELETE /wellbeing/journals/{id}`
-- 对话：`POST /ai/chat`、`GET /ai/sessions/{id}`
-- 笔迹：`POST /handwriting/analyze`、`GET /handwriting/history`
+- 对话：`POST /ai/chat`、`GET /ai/health`、`GET /ai/sessions/{id}`
+- 笔迹：`POST /handwriting/analyze`、`GET /handwriting/health`、`GET /handwriting/history`
 - 房树人：`POST /htp/records`、`POST /htp/analyze`、`GET /htp/records/{id}`
 - 沙盘：`POST /sandplay/records`、`POST /sandplay/analyze`、`GET /sandplay/records/{id}`
 - 内容：`GET /wellbeing/resources`、`GET /wellbeing/resources/{id}`、`POST /wellbeing/progress`

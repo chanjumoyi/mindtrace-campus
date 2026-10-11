@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "save_sandplay_record",
+  "description": "保存心理沙盘记录——将沙具摆放结果和结构化观察保存到数据库",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "const": "save_sandplay_record"
+    },
+    "parameters": {
+      "type": "object",
+      "required": ["sessionId", "elements", "idempotencyKey"],
+      "properties": {
+        "sessionId": { "type": "string" },
+        "elements": {
+          "type": "array",
+          "description": "沙具摆放列表：元素编码与归一化坐标",
+          "items": {
+            "type": "object",
+            "required": ["elementCode", "x", "y"],
+            "properties": {
+              "elementCode": { "type": "string" },
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "rotation": { "type": "number" }
+            }
+          }
+        },
+        "narrative": { "type": ["string", "null"], "maxLength": 2000 },
+        "idempotencyKey": { "type": "string" }
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "recordId": { "type": "string" },
+      "status": { "type": "string", "enum": ["saved", "cached"] }
+    }
+  },
+  "permission": {
+    "level": "write",
+    "scope": "own-records"
+  },
+  "reliability": {
+    "timeout": 5000,
+    "maxRetries": 3,
+    "retryStrategy": "exponential-backoff",
+    "idempotencyKeyField": "idempotencyKey"
+  },
+  "errorFallback": {
+    "timeout": "保存超时，请稍后重试。",
+    "validationError": "沙盘数据不完整，请检查必填项。",
+    "serverError": "保存失败，请稍后重试。"
+  }
+}

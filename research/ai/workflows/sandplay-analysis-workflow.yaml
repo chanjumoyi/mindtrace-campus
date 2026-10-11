@@ -7,7 +7,7 @@ steps:
     input_schema: backend/app/contracts/schemas/sandplay-element.schema.json
   - id: observe
     action: calculate_layout_features
-    service: backend.app.services.sandplay
+    safety: non_diagnostic
   - id: retrieve
     action: retrieve_reviewed_knowledge
     tool: get_rag_context
@@ -16,5 +16,6 @@ steps:
     prompt: research/ai/prompts/sandplay-analysis-agent-v1.md
     safety: non_diagnostic
   - id: persist
-    action: save_research_record
+    action: save_observation_record
+    tool: save_sandplay_record
     requires_consent: true

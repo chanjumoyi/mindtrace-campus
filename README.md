@@ -38,17 +38,24 @@ docker compose up --build
 - API 文档：`http://localhost:8000/docs`
 - 健康检查：`http://localhost:8000/health`
 
-前后端独立开发：
+前后端独立开发（需要本地开发时安装 Python 3.12 与 Node 22 LTS）：
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\pip install -r backend\requirements-dev.txt
+py -3.12 -m venv .venv
+.\.venv\Scripts\python -m pip install -r backend\requirements-dev.txt
 $env:DATABASE_URL='sqlite:///./mindline-dev.db'
-.\.venv\Scripts\uvicorn app.main:app --app-dir backend --reload
+.\.venv\Scripts\python -m uvicorn app.main:app --app-dir backend --reload
 
 Set-Location frontend
-npm install
+npm ci
 npm run dev
+```
+
+必须使用 Python 3.12 创建虚拟环境：固定的 `pydantic==2.11.x` 在 3.13/3.14 上没有预编译包，
+安装会在 `pydantic-core` 处失败。只运行 `research/` 下的离线脚本时，再额外安装研究依赖：
+
+```powershell
+uv pip install --python .venv\Scripts\python.exe -r research\requirements.txt
 ```
 
 ## 目录

@@ -9,7 +9,16 @@ import json
 import re
 from pathlib import Path
 
-from pypdf import PdfReader
+
+def pdf_reader_class():
+    """Import pypdf lazily so a missing research dependency fails with a clear message."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        raise SystemExit(
+            "缺少 pypdf；请先安装研究依赖：uv pip install -r research/requirements.txt"
+        ) from None
+    return PdfReader
 
 
 def normalize(text: str) -> str:
@@ -50,9 +59,13 @@ def main() -> int:
     parser.add_argument("--chunk-size", type=int, default=900)
     parser.add_argument("--overlap", type=int, default=120)
     args = parser.parse_args()
+    if not args.pdf.is_file():
+        parser.error(f"未找到 PDF：{args.pdf}")
+    reader = pdf_reader_class()(str(args.pdf))
+    if len(reader.pages) == 0:
+        parser.error(f"PDF 没有可读取的页面：{args.pdf}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    reader = PdfReader(str(args.pdf))
     source_hash = hashlib.sha256(args.pdf.read_bytes()).hexdigest()
     page_path = args.output_dir / "pages.jsonl"
     chunk_path = args.output_dir / "chunks.jsonl"

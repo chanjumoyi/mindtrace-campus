@@ -6,11 +6,26 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from extract_handwriting_features import extract, load_points
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def load_feature_extractor():
+    """Import the extractor shared with the API service.
+
+    The feature definition must stay in one place, so this script reuses
+    ``backend/app/services/handwriting/features.py`` instead of keeping a second
+    copy that can drift.
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from backend.app.services.handwriting.features import extract, load_points
+
+    return extract, load_points
 
 
 def pick(data: dict[str, Any], *path: str) -> Any:
@@ -110,22 +125,44 @@ def main() -> int:
     args = parser.parse_args()
     root = args.private_root.resolve()
     manifest = root / "manifests" / "sessions.csv"
+    if not manifest.is_file():
+        parser.error(f"未找到私有数据清单：{manifest}；私有数据不进仓库，请先运行导入脚本")
+    extract, load_points = load_feature_extractor()
     output_dir = root / "features"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with manifest.open("r", encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
+    if not rows:
+        parser.error(f"清单中没有任何样本：{manifest}")
 
     flat_rows: list[dict[str, Any]] = []
+    skipped: list[str] = []
     for row in rows:
-        trace_path = root / row["raw_json"]
-        payload, points = load_points(trace_path)
-        features = extract(payload, points)
-        feature_path = output_dir / f"{row['sample_id']}.features.json"
+        sample_id = row.get("sample_id") or "<unknown>"
+        raw_json = row.get("raw_json")
+        if not raw_json:
+            skipped.append(f"{sample_id}: 清单缺少 raw_json 字段")
+            continue
+        try:
+            payload, points = load_points(root / raw_json)
+            features = extract(payload, points)
+        except (OSError, ValueError) as error:
+            # One unreadable trace must not discard the samples already extracted.
+            skipped.append(f"{sample_id}: {type(error).__name__}: {error}")
+            continue
+        feature_path = output_dir / f"{sample_id}.features.json"
         feature_path.write_text(
             json.dumps(features, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         flat_rows.append(flatten(row, features))
+
+    if not flat_rows:
+        parser.error(
+            f"没有任何样本成功提取特征（跳过 {len(skipped)} 条）：{'; '.join(skipped[:3])}"
+        )
+    if skipped:
+        print(f"已跳过 {len(skipped)} 条无法读取的样本：{'; '.join(skipped[:3])}")
 
     table_path = output_dir / "modeling_dataset_v0.1.csv"
     with table_path.open("w", encoding="utf-8-sig", newline="") as handle:
