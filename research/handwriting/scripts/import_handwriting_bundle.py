@@ -141,18 +141,31 @@ def nearest_images(json_entries: list[dict[str, Any]], images: list[dict[str, An
             item["image"] = None
 
 
+def load_trajectory_payload(archive: ZipFile, item: dict[str, Any]) -> dict[str, Any]:
+    """Load one trajectory and validate fields that are consumed during import."""
+    try:
+        payload = json.loads(archive.read(item["name"]).decode("utf-8"))
+    except (KeyError, RuntimeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{item['name']} 不是有效的 UTF-8 JSON：{error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError(f"{item['name']} 不是有效的采集器轨迹 JSON 对象")
+    for field in ("selfReport", "timing", "summary"):
+        value = payload.get(field)
+        if value is not None and not isinstance(value, dict):
+            raise ValueError(f"{item['name']} 的 {field} 必须是 JSON 对象")
+    points = payload.get("points")
+    if points is not None and not isinstance(points, list):
+        raise ValueError(f"{item['name']} 的 points 必须是 JSON 数组")
+    return payload
+
+
 def validate_trajectory_entries(
     archive: ZipFile, entries: list[dict[str, Any]]
-) -> list[tuple[dict[str, Any], dict[str, Any], str, str]]:
+) -> list[tuple[dict[str, Any], str, str]]:
     """Read and validate every trajectory before the importer writes any files."""
-    validated: list[tuple[dict[str, Any], dict[str, Any], str, str]] = []
+    validated: list[tuple[dict[str, Any], str, str]] = []
     for item in entries:
-        try:
-            payload = json.loads(archive.read(item["name"]).decode("utf-8"))
-        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ValueError(f"{item['name']} 不是有效的 UTF-8 JSON：{error}") from error
-        if not isinstance(payload, dict):
-            raise ValueError(f"{item['name']} 不是有效的采集器轨迹 JSON 对象")
+        payload = load_trajectory_payload(archive, item)
         participant = str(payload.get("participantId") or item["participant"])
         if not PARTICIPANT_RE.fullmatch(participant):
             raise ValueError(
@@ -160,7 +173,7 @@ def validate_trajectory_entries(
             )
         task = payload.get("task")
         task_type = str((task.get("type") if isinstance(task, dict) else None) or "unknown")
-        validated.append((item, payload, participant, task_type))
+        validated.append((item, participant, task_type))
     return validated
 
 
@@ -182,10 +195,16 @@ def main() -> int:
         ZipFile(args.trajectory_zip) as trajectory_archive,
         ZipFile(args.image_zip) as image_archive,
     ):
-        bad_trajectory = trajectory_archive.testzip()
+        try:
+            bad_trajectory = trajectory_archive.testzip()
+        except RuntimeError as error:
+            parser.error(f"无法读取轨迹压缩包（可能已加密）：{error}")
         if bad_trajectory:
             parser.error(f"轨迹压缩包包含损坏文件：{bad_trajectory}")
-        bad_image = image_archive.testzip()
+        try:
+            bad_image = image_archive.testzip()
+        except RuntimeError as error:
+            parser.error(f"无法读取预览图压缩包（可能已加密）：{error}")
         if bad_image:
             parser.error(f"预览图压缩包包含损坏文件：{bad_image}")
         json_entries = zip_entries(trajectory_archive, "json")
@@ -207,8 +226,16 @@ def main() -> int:
         copy_once(args.image_zip, archive_dir / args.image_zip.name)
 
         new_rows: list[dict[str, Any]] = []
-        for item, payload, participant, task_type in validated_entries:
-            sid = sample_id(participant, item["stamp"], task_type)
+        used_sample_ids: set[str] = set()
+        for item, participant, task_type in validated_entries:
+            payload = load_trajectory_payload(trajectory_archive, item)
+            base_sid = sample_id(participant, item["stamp"], task_type)
+            sid = base_sid
+            suffix = 2
+            while sid in used_sample_ids:
+                sid = f"{base_sid}-{suffix}"
+                suffix += 1
+            used_sample_ids.add(sid)
             date = item["datetime"].date().isoformat()
             relative_dir = Path("raw") / participant / date / sid
             target_dir = safe_target(root, relative_dir)
