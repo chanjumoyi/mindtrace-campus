@@ -6,6 +6,8 @@
 
 [系统架构说明](./02-architecture/README.md) 是开发实施的规范性基线，已经通过 [ADR-0001](./07-collaboration/decisions/0001-modular-monolith.md) 固化。新增模块、接口、数据表、后台任务或外部依赖前，必须先确认符合架构说明；涉及数据库、认证、模块所有权或部署单元的变更必须新增 ADR。
 
+新加入项目或更换开发电脑时，从[新成员环境安装与项目测试指南](./06-development/setup-guide.md)开始。仅参与功能测试的成员优先使用 Docker 方式，不需要单独安装 Python、Node.js 或 MySQL。
+
 ## 文档导航
 
 | 目录 | 内容 | 主要维护方向 |
@@ -15,7 +17,7 @@
 | [03-data](./03-data/README.md) | 数据模型、隐私和研究数据约束 | 后端、安全、用户研究 |
 | [04-api](./04-api/README.md) | API 规范与接口清单 | 后端、前端 |
 | [05-ai](./05-ai/README.md) | LLM、多模态分析与安全边界 | 算法、心理学支持 |
-| [06-development](./06-development/README.md) | 环境、开发、测试与发布规范 | 全员 |
+| [06-development](./06-development/README.md) | [首次安装与测试](./06-development/setup-guide.md)、开发、测试与发布规范 | 全员 |
 | [07-collaboration](./07-collaboration/README.md) | 三人分工、协作流程和决策记录 | 全员 |
 
 ## 范围基线

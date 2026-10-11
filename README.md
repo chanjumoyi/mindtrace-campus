@@ -25,6 +25,8 @@
 
 ## 快速开始
 
+首次配置电脑、安装 Docker 或准备本地开发环境时，请先阅读[新成员环境安装与项目测试指南](docs/06-development/setup-guide.md)。只进行功能测试的组员不需要单独安装 Python、Node.js 或 MySQL。
+
 ```powershell
 Copy-Item .env.example .env
 docker compose up --build
