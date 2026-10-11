@@ -19,6 +19,7 @@ STAMP_RE = re.compile(
 # participantId comes from the imported file body, so it may never be used as a path
 # component until it matches this allowlist.
 PARTICIPANT_RE = re.compile(r"^self-\d{1,6}$")
+ARCHIVE_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MIN_POINTS = 20
 MIN_STROKES = 3
 FIELDS = [
@@ -78,6 +79,16 @@ def safe_target(root: Path, relative: Path) -> Path:
     return target
 
 
+def archive_directory(root: Path, label: str) -> Path:
+    """Return a single-level archive directory that cannot escape the private root."""
+    if not ARCHIVE_LABEL_RE.fullmatch(label):
+        raise ValueError(
+            "archive-label 只能包含字母、数字、点、下划线和连字符，"
+            "必须以字母或数字开头且长度不超过 64"
+        )
+    return safe_target(root, Path("source-archives") / label)
+
+
 def copy_once(source: Path, destination: Path) -> None:
     """Copy a file, tolerating a re-import of an already archived archive."""
     if source.resolve() == destination.resolve():
@@ -130,6 +141,29 @@ def nearest_images(json_entries: list[dict[str, Any]], images: list[dict[str, An
             item["image"] = None
 
 
+def validate_trajectory_entries(
+    archive: ZipFile, entries: list[dict[str, Any]]
+) -> list[tuple[dict[str, Any], dict[str, Any], str, str]]:
+    """Read and validate every trajectory before the importer writes any files."""
+    validated: list[tuple[dict[str, Any], dict[str, Any], str, str]] = []
+    for item in entries:
+        try:
+            payload = json.loads(archive.read(item["name"]).decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"{item['name']} 不是有效的 UTF-8 JSON：{error}") from error
+        if not isinstance(payload, dict):
+            raise ValueError(f"{item['name']} 不是有效的采集器轨迹 JSON 对象")
+        participant = str(payload.get("participantId") or item["participant"])
+        if not PARTICIPANT_RE.fullmatch(participant):
+            raise ValueError(
+                f"{item['name']} 的 participantId 非法（不得包含路径字符）：{participant!r}"
+            )
+        task = payload.get("task")
+        task_type = str((task.get("type") if isinstance(task, dict) else None) or "unknown")
+        validated.append((item, payload, participant, task_type))
+    return validated
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="导入心迹AI批量轨迹和预览图")
     parser.add_argument("trajectory_zip", type=Path)
@@ -148,30 +182,32 @@ def main() -> int:
         ZipFile(args.trajectory_zip) as trajectory_archive,
         ZipFile(args.image_zip) as image_archive,
     ):
+        bad_trajectory = trajectory_archive.testzip()
+        if bad_trajectory:
+            parser.error(f"轨迹压缩包包含损坏文件：{bad_trajectory}")
+        bad_image = image_archive.testzip()
+        if bad_image:
+            parser.error(f"预览图压缩包包含损坏文件：{bad_image}")
         json_entries = zip_entries(trajectory_archive, "json")
         images = zip_entries(image_archive, "png")
-        # Validate before copying anything, so a bad bundle leaves no partial archive.
         if not json_entries:
             parser.error(f"轨迹压缩包中没有符合命名规则的 JSON：{args.trajectory_zip}")
         nearest_images(json_entries, images)
+        try:
+            validated_entries = validate_trajectory_entries(trajectory_archive, json_entries)
+            archive_dir = archive_directory(root, args.archive_label)
+        except ValueError as error:
+            parser.error(str(error))
 
-        archive_dir = root / "source-archives" / args.archive_label
+        # Nothing under the private root is created until every archive member and
+        # trajectory payload has passed validation.
         archive_dir.mkdir(parents=True, exist_ok=True)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         copy_once(args.trajectory_zip, archive_dir / args.trajectory_zip.name)
         copy_once(args.image_zip, archive_dir / args.image_zip.name)
 
         new_rows: list[dict[str, Any]] = []
-        for item in json_entries:
-            payload = json.loads(trajectory_archive.read(item["name"]).decode("utf-8"))
-            if not isinstance(payload, dict):
-                parser.error(f"{item['name']} 不是有效的采集器轨迹 JSON 对象")
-            participant = str(payload.get("participantId") or item["participant"])
-            if not PARTICIPANT_RE.match(participant):
-                parser.error(
-                    f"{item['name']} 的 participantId 非法（不得包含路径字符）：{participant!r}"
-                )
-            task_type = str((payload.get("task") or {}).get("type") or "unknown")
+        for item, payload, participant, task_type in validated_entries:
             sid = sample_id(participant, item["stamp"], task_type)
             date = item["datetime"].date().isoformat()
             relative_dir = Path("raw") / participant / date / sid

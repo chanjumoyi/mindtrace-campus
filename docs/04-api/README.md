@@ -27,7 +27,8 @@
 
 ## 接口清单
 
-- 系统：`GET /health`、`GET /modules`- 认证：`POST /auth/register`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`
+- 系统：`GET /health`、`GET /modules`
+- 认证：`POST /auth/register`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`
 - 授权与数据权利：`GET|POST /consents`、`POST /account/export`、`DELETE /account`
 - 情绪：`GET|POST /wellbeing/moods`、`GET /wellbeing/moods/trend`、`DELETE /wellbeing/moods/{id}`
 - 手账：`GET|POST /wellbeing/journals`、`GET|PUT|DELETE /wellbeing/journals/{id}`
