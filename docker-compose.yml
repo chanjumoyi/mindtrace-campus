@@ -36,9 +36,7 @@ services:
       QWEN_MODEL: ${QWEN_MODEL:-qwen2.5-7b-instruct}
       QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-20}
       QWEN_MAX_ATTEMPTS: ${QWEN_MAX_ATTEMPTS:-3}
-      HANDWRITING_MODEL_PATH: /app/models/handwriting_ridge_v0.1.json
     ports: ["8000:8000"]
-    volumes: ["./research/handwriting/models:/app/models:ro"]
 
   frontend:
     build: ./frontend

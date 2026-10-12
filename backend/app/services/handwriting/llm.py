@@ -106,7 +106,6 @@ class HandwritingLlmExplainer:
             "observations": analysis.get("observations", []),
             "dataQuality": analysis.get("dataQuality"),
             "confidence": analysis.get("confidence"),
-            "citations": analysis.get("citations", []),
             "limitations": analysis.get("limitations", [])[:4],
         }
         messages = [

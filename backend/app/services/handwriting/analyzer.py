@@ -10,13 +10,11 @@ import math
 import uuid
 from typing import Any
 
-from .baseline import HandwritingBaselinePredictor
 from .features import extract
 
-MODEL_VERSION = "handwriting-observation-v0.2-local"
+MODEL_VERSION = "handwriting-observation-v0.3-objective-only"
 MIN_POINTS = 20
 MIN_STROKES = 3
-BASELINE_PREDICTOR = HandwritingBaselinePredictor()
 
 
 class TraceValidationError(ValueError):
@@ -151,13 +149,12 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
     ]
 
     status = "SUCCESS" if quality >= 0.6 else "INSUFFICIENT_DATA"
-    experimental_prediction = BASELINE_PREDICTOR.predict(features)
     limitations = [
         "所有指标仅描述本次书写行为，不代表人格、心理状态或医学诊断。",
         "速度使用浏览器像素计算，跨设备比较前必须进行物理尺寸和采样率校准。",
         "尚无同一参与者的个人基线，因此 change 字段为空，不进行状态变化推断。",
         "压力指标依赖设备真实压感，仅可在同一设备、同一任务内谨慎比较。",
-        experimental_prediction.get("warning"),
+        "新版真人数据与统一轨迹 Schema 尚未完成验证，当前不输出心理状态预测。",
         *warnings,
     ]
     return {
@@ -171,29 +168,8 @@ def analyse_trace(trace: dict[str, Any], request_id: str | None = None) -> dict[
             "rhythmInstability": rhythm,
             "writingTension": tension,
         },
-        "experimentalPrediction": experimental_prediction,
         "confidence": _clamp(quality * 0.65),
         "limitations": list(dict.fromkeys(item for item in limitations if item)),
         "modelVersion": MODEL_VERSION,
         "features": features,
-        "citations": [
-            {
-                "hypothesisId": "H009",
-                "sourceTitle": "笔迹心理学",
-                "pdfPage": "29-30",
-                "usage": "先报告客观特征，再讨论解释；本接口不输出心理结论。",
-            },
-            {
-                "hypothesisId": "H001",
-                "sourceTitle": "笔迹心理学",
-                "pdfPage": "30",
-                "usage": "速度不可孤立解释，只保留为同任务、同设备下的观察量。",
-            },
-            {
-                "hypothesisId": "H002",
-                "sourceTitle": "笔迹心理学",
-                "pdfPage": "62-64",
-                "usage": "压力与速度需组合且设备压力需校准。",
-            },
-        ],
     }

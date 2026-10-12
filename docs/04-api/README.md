@@ -1,7 +1,7 @@
 # API 规范
 
-状态：已按立项报告对齐
-最后更新：2026-10-11
+状态：当前接口与目标接口并列管理
+最后更新：2026-10-12
 
 ## 通用约定
 
@@ -25,9 +25,20 @@
 }
 ```
 
-## 接口清单
+## 当前已实现接口
 
-- 系统：`GET /health`、`GET /modules`
+- 系统：`GET /health`、`GET /api/v1/modules`
+- 情绪：`GET|POST /api/v1/wellbeing/moods`
+- 手账：`GET|POST /api/v1/wellbeing/journals`
+- 内容：`GET /api/v1/wellbeing/resources`
+- 对话：`POST /api/v1/ai/chat`、`GET /api/v1/ai/health`
+- 笔迹：`POST /api/v1/handwriting/analyze`、`GET /api/v1/handwriting/health`
+
+当前接口属于原型，认证、数据归属、分页、数据库迁移和统一错误尚未全部完成。修改原型接口时应迁入架构文档规定的模块目录，不再扩大扁平路由。
+
+## 目标接口
+
+- 系统：`GET /health`、`GET /api/v1/modules`
 - 认证：`POST /auth/register`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`
 - 授权与数据权利：`GET|POST /consents`、`POST /account/export`、`DELETE /account`
 - 情绪：`GET|POST /wellbeing/moods`、`GET /wellbeing/moods/trend`、`DELETE /wellbeing/moods/{id}`

@@ -18,9 +18,10 @@ htmlcov/
 
 # Sensitive research data and generated models
 research/private/
-research/handwriting/private/
-research/handwriting/models/*.json
-!research/handwriting/models/.gitkeep
+research/artifacts/
+research/datasets/raw/
+research/datasets/normalized/
+datasets/
 
 # Local databases, logs and temporary files
 *.db

@@ -1,9 +1,0 @@
-# Offline research and dataset tooling dependencies.
-#
-# These are NOT needed to run the API or the web app; install them only when you
-# run the scripts in research/handwriting/scripts/.
-#
-#   uv pip install --python .venv\Scripts\python.exe -r research/requirements.txt
-#
-numpy==2.4.2
-pypdf==6.1.3

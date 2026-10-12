@@ -8,7 +8,7 @@ node tests/test_pointer_normalization.cjs
 npm run build --prefix frontend
 ```
 
-- `python -m pytest tests`：FastAPI、安全分流和笔迹算法测试。必须用 `python -m pytest` 而不是裸 `pytest`，
+- `python -m pytest tests`：FastAPI、安全分流和客观笔迹特征测试。必须用 `python -m pytest` 而不是裸 `pytest`，
   因为 `tests/test_api.py` 通过 `backend.app.main` 导入应用，依赖当前目录在 `sys.path` 上。
 - `node tests/test_pointer_normalization.cjs`：浏览器手写笔采样归一化测试。
 - `npm run build --prefix frontend`：Vue 3 生产构建验证。

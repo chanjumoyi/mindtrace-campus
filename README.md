@@ -2,7 +2,7 @@
 
 心迹AI是面向大学生的心理健康智能交互平台。项目依据《心迹AI——大学生心理健康智能交互平台立项报告》重整，采用 Vue 3、FastAPI 与 MySQL，围绕日常对话、电子手账、情绪记录、笔迹行为、房树人、心理沙盘、冥想练习和心理科普展开。
 
-当前版本是用于技术验证的研究原型，不代表立项报告中的全部功能已经完成。实现状态和验收口径以 [需求清单](docs/需求清单.md) 为准。
+当前版本是用于技术验证的研究原型，不代表立项报告中的全部功能已经完成。实现状态和验收口径以 [需求清单](docs/01-product/requirements.md) 为准。
 
 > 安全边界：平台只提供心理健康教育、日常支持和非诊断性辅助观察，不替代心理咨询师、医疗机构或紧急服务。笔迹、绘画和沙盘结果不能单独用于人格判断或医学诊断。
 
@@ -11,7 +11,7 @@
 - 核心产品：AI陪伴、情绪打卡、电子手账、冥想与科普。
 - 探索模块：笔迹行为特征、房树人辅助观察、AI辅助沙盘。
 - 数据原则：最小化采集、显式授权、敏感数据隔离、可删除、可审计。
-- 评估计划：在伦理审查和知情同意后，使用 PHQ-9、GAD-7、PSS 等标准工具开展前后测；量表分数不等于诊断。
+- 评估计划：在伦理审查、正式量表使用条件确认和知情同意后，按照[笔迹数据集与数位板采集规范](docs/03-data/handwriting-collection-and-dataset-spec.md)开展测量；量表分数不等于诊断。
 
 ## 技术栈
 
@@ -51,12 +51,7 @@ npm ci
 npm run dev
 ```
 
-必须使用 Python 3.12 创建虚拟环境：固定的 `pydantic==2.11.x` 在 3.13/3.14 上没有预编译包，
-安装会在 `pydantic-core` 处失败。只运行 `research/` 下的离线脚本时，再额外安装研究依赖：
-
-```powershell
-uv pip install --python .venv\Scripts\python.exe -r research\requirements.txt
-```
+必须使用 Python 3.12 创建虚拟环境：固定的 `pydantic==2.11.x` 在 3.13/3.14 上没有预编译包，安装会在 `pydantic-core` 处失败。研究数据适配器将在统一轨迹 Schema 2.0 冻结后单独声明依赖，不复用后端运行时环境。
 
 ## 目录
 
@@ -64,15 +59,15 @@ uv pip install --python .venv\Scripts\python.exe -r research\requirements.txt
 mindtrace-campus/
 ├─ frontend/                 # Vue 3 Web 应用与沙盘/笔迹交互资源
 ├─ backend/                  # FastAPI、MySQL 数据模型、AI 与笔迹服务
-├─ research/                 # Prompt、工作流、公开知识、算法与实验脚本
-├─ docs/                     # 与立项报告一致的架构、范围和安全文档
+├─ research/                 # 离线研究资产、数据适配器和实验（不被线上服务导入）
+├─ docs/                     # 产品、架构、数据、API、开发和协作文档
 ├─ tests/                    # 后端、算法和前端纯逻辑测试
 ├─ docker-compose.yml        # MySQL + FastAPI + Vue/Nginx
 └─ .env.example              # 不含密钥的配置模板
 ```
 
-详细取舍见 [需求清单](docs/需求清单.md)、[代码规范](docs/代码规范.md)、[立项报告对齐说明](docs/立项报告对齐说明.md) 和 [系统架构](docs/系统架构.md)。
+所有队友在编码前必须阅读[项目架构与开发基线](docs/02-architecture/README.md)。产品范围见[需求清单](docs/01-product/requirements.md)，真人笔迹研究见[笔迹数据集与数位板采集规范](docs/03-data/handwriting-collection-and-dataset-spec.md)。
 
 ## 研究数据
 
-真实对话、笔迹、量表、身份信息和参与者数据不得提交到 Git。所有本地敏感数据只允许放入 `research/private/` 或 `research/handwriting/private/`。仓库内示例必须是合成或充分匿名的数据。
+真实对话、笔迹、量表、身份信息和参与者数据不得提交到 Git。所有本地敏感数据和下载的数据集必须放在仓库之外的受控目录，或放入明确被 Git 忽略的 `research/private/`。仓库内示例必须是合成数据。

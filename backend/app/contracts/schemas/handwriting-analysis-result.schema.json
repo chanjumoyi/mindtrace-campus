@@ -35,51 +35,12 @@
       },
       "additionalProperties": false
     },
-    "experimentalPrediction": {
-      "type": "object",
-      "required": ["status", "confidenceLevel", "modelVersion", "scores", "warning"],
-      "properties": {
-        "status": { "enum": ["EXPERIMENTAL", "UNAVAILABLE"] },
-        "confidenceLevel": { "enum": ["LOW", "NONE"] },
-        "modelVersion": { "type": ["string", "null"] },
-        "sampleCount": { "type": "integer", "minimum": 0 },
-        "participantCount": { "type": "integer", "minimum": 0 },
-        "scores": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "required": ["label", "value"],
-            "properties": {
-              "label": { "type": "string" },
-              "value": { "type": "number", "minimum": 1, "maximum": 5 }
-            },
-            "additionalProperties": false
-          }
-        },
-        "warning": { "type": ["string", "null"] }
-      },
-      "additionalProperties": false
-    },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
     "limitations": { "type": "array", "items": { "type": "string" } },
     "modelVersion": { "type": "string" },
     "features": {
       "type": "object",
       "description": "Interpretable feature extraction result; fields evolve with featureVersion."
-    },
-    "citations": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["hypothesisId", "sourceTitle", "pdfPage", "usage"],
-        "properties": {
-          "hypothesisId": { "type": "string" },
-          "sourceTitle": { "type": "string" },
-          "pdfPage": { "type": "string" },
-          "usage": { "type": "string" }
-        },
-        "additionalProperties": false
-      }
     },
     "llmExplanation": {
       "type": "object",

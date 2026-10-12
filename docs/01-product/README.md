@@ -30,6 +30,7 @@
 ## 配套文档
 
 - [MVP 功能清单](./feature-list.md)
+- [完整需求与验收状态](./requirements.md)
 - [系统架构](../02-architecture/README.md)
 - [数据模型与隐私约束](../03-data/README.md)
 - [AI 与多模态分析](../05-ai/README.md)
