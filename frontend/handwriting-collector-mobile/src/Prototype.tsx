@@ -13,8 +13,9 @@ type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
   x: number; y: number; xNorm: number; yNorm: number;
   elapsedMs: number; timestamp: number; pressure: number;
-  tiltX: number; tiltY: number; twist: number; width: number; height: number;
-  pointerType: string; coalesced: boolean;
+  tangentialPressure: number; tiltX: number; tiltY: number; twist: number;
+  width: number; height: number; pointerId: number; buttons: number;
+  isPrimary: boolean; pointerType: string; coalesced: boolean;
 };
 
 type Attempt = {
@@ -119,7 +120,38 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
   const startedAt = useRef("");
   const startTime = useRef(0);
   const drawing = useRef(false);
+  const activePointerId = useRef<number | null>(null);
+  const penSeen = useRef(false);
+  const pressureRange = useRef({ min: 1, max: 0 });
   const [pointCount, setPointCount] = useState(0);
+  const [inputState, setInputState] = useState({ pointerType: "", livePressure: 0, pressureDetected: false });
+
+  useEffect(() => {
+    const stopDrawing = () => { drawing.current = false; activePointerId.current = null; };
+    window.addEventListener("pointerup", stopDrawing);
+    window.addEventListener("pointercancel", stopDrawing);
+    return () => {
+      window.removeEventListener("pointerup", stopDrawing);
+      window.removeEventListener("pointercancel", stopDrawing);
+    };
+  }, []);
+
+  const hasContact = (sample: PointerEvent) =>
+    sample.pointerType === "touch" || (sample.buttons & 1) === 1 || (sample.pointerType === "pen" && sample.pressure > 0);
+
+  const observeInput = (sample: PointerEvent) => {
+    if (sample.pointerType === "pen") penSeen.current = true;
+    if (sample.pointerType === "pen" && sample.pressure > 0) {
+      pressureRange.current.min = Math.min(pressureRange.current.min, sample.pressure);
+      pressureRange.current.max = Math.max(pressureRange.current.max, sample.pressure);
+    }
+    const pressureDetected = penSeen.current && pressureRange.current.max - pressureRange.current.min >= 0.01;
+    setInputState((current) => ({
+      pointerType: penSeen.current ? "pen" : sample.pointerType || current.pointerType,
+      livePressure: sample.pointerType === "pen" ? sample.pressure : 0,
+      pressureDetected,
+    }));
+  };
 
   const draw = (point: Point, previous?: Point) => {
     const canvas = canvasRef.current;
@@ -144,19 +176,31 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     const rect = canvas.getBoundingClientRect();
     const native = event.nativeEvent;
     const samples = phase === "move" && native.getCoalescedEvents ? native.getCoalescedEvents() : [native];
-    samples.forEach((sample, sampleIndex) => {
+    samples.filter((sample) => phase !== "move" || hasContact(sample)).forEach((sample) => {
+      observeInput(sample);
       const x = sample.clientX - rect.left; const y = sample.clientY - rect.top;
       const point: Point = { seq: points.current.length, strokeId: strokeId.current, phase, x, y,
         xNorm: x / rect.width, yNorm: y / rect.height, elapsedMs: performance.now() - startTime.current,
-        timestamp: Date.now(), pressure: sample.pressure || (sample.pointerType === "mouse" ? 0.5 : 0),
+        timestamp: Date.now(), pressure: sample.pressure, tangentialPressure: sample.tangentialPressure,
         tiltX: sample.tiltX, tiltY: sample.tiltY, twist: sample.twist, width: sample.width, height: sample.height,
-        pointerType: sample.pointerType, coalesced: samples.length > 1 && sampleIndex < samples.length };
+        pointerId: sample.pointerId, buttons: sample.buttons, isPrimary: sample.isPrimary,
+        pointerType: sample.pointerType, coalesced: samples.length > 1 };
       const previous = points.current.at(-1); points.current.push(point); draw(point, previous);
     });
     setPointCount(points.current.length);
   };
+  const endStroke = (event: ReactPointerEvent<HTMLCanvasElement>, recordEnd = true) => {
+    if (!drawing.current || activePointerId.current !== event.pointerId) return;
+    if (recordEnd) record(event, "up");
+    drawing.current = false;
+    activePointerId.current = null;
+    setInputState((current) => ({ ...current, livePressure: 0 }));
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
+  };
   const clear = () => {
     points.current = []; strokeId.current = 0; startedAt.current = ""; setPointCount(0);
+    drawing.current = false; activePointerId.current = null; pressureRange.current = { min: 1, max: 0 };
+    setInputState((current) => ({ ...current, livePressure: 0, pressureDetected: false }));
     const canvas = canvasRef.current; canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
   };
   const finish = () => {
@@ -165,13 +209,24 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     const rect = canvas.getBoundingClientRect();
     onComplete({ taskId: task.id, prompt: task.prompt, startedAt: startedAt.current, endedAt: new Date().toISOString(),
       canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, points: points.current,
-      strokeCount: strokeId.current, pressureDetected: points.current.some((point) => point.pressure > 0 && point.pressure !== 0.5) });
+      strokeCount: strokeId.current,
+      pressureDetected: penSeen.current && pressureRange.current.max - pressureRange.current.min >= 0.01 });
   };
-  return <><div className="canvas-wrap"><canvas ref={canvasRef} aria-label="书写区域"
-    onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; strokeId.current += 1; if (!startedAt.current) { startedAt.current = new Date().toISOString(); startTime.current = performance.now(); } record(event, "down"); }}
-    onPointerMove={(event) => { if (drawing.current) record(event, "move"); }}
-    onPointerUp={(event) => { if (drawing.current) record(event, "up"); drawing.current = false; }}
-    onPointerCancel={(event) => { if (drawing.current) record(event, "up"); drawing.current = false; }} />
+  const inputLabel = inputState.pointerType === "pen" ? "数位笔已识别" : inputState.pointerType ? "鼠标兼容模式" : "等待数位笔输入";
+  const inputHint = inputState.pointerType === "pen"
+    ? inputState.pressureDetected ? "已检测到动态笔压" : "已识别笔尖，继续用不同力度书写以检查压感"
+    : inputState.pointerType ? "当前设备未提供笔压；请在数位板驱动中开启 Windows Ink" : "笔尖悬停不会留下轨迹，接触画布后才开始采集";
+  return <><div className={`device-check ${inputState.pointerType === "pen" ? "pen-ready" : inputState.pointerType ? "compat-mode" : ""}`}>
+    <div><strong>{inputLabel}</strong><span>{inputHint}</span></div>
+    <div className="pressure-value"><small>实时笔压</small><b>{Math.round(inputState.livePressure * 100)}%</b></div>
+    <div className="pressure-track"><i style={{ width: `${Math.max(0, Math.min(100, inputState.livePressure * 100))}%` }} /></div>
+  </div>
+  <div className="canvas-wrap" data-scroll-drag="ignore"><canvas ref={canvasRef} aria-label="书写区域" data-point-count={pointCount} data-drawing={drawing.current ? "true" : "false"}
+    onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { startedAt.current = new Date().toISOString(); startTime.current = performance.now(); } record(event, "down"); }}
+    onPointerMove={(event) => { observeInput(event.nativeEvent); if (!drawing.current || activePointerId.current !== event.pointerId) return; if (!hasContact(event.nativeEvent)) { endStroke(event, false); return; } event.preventDefault(); record(event, "move"); }}
+    onPointerUp={(event) => endStroke(event)}
+    onPointerCancel={(event) => endStroke(event, false)}
+    onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { drawing.current = false; activePointerId.current = null; } }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
     <div className="canvas-meta"><span>{strokeId.current} 笔</span><span>{pointCount} 个采样点</span><button onClick={clear}>清空重写</button></div>
     <button className="primary-button" disabled={pointCount < 3} onClick={finish}>确认本页书写</button></>;
