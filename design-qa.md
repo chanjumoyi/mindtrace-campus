@@ -60,4 +60,3 @@ The hand-drawn wireframe did not define final brand typography, color, spacing t
 - [x] No actionable P0/P1/P2 findings remain.
 
 final result: passed
-
