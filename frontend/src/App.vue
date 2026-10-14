@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from './api'
-import HandwritingCollectorPage from './features/handwriting/pages/HandwritingCollectorPage.vue'
 
 const active = ref('home')
 const modules = ref([])
@@ -75,8 +74,8 @@ async function sendChat() {
 </script>
 
 <template>
-  <div :class="['shell', { 'collector-mode': active === 'handwriting' }]">
-    <aside v-if="active !== 'handwriting'">
+  <div class="shell">
+    <aside>
       <a class="brand" href="#" @click.prevent="active = 'home'">
         <span class="brand-mark">心</span><span>心迹AI<small>MindLine</small></span>
       </a>
@@ -94,7 +93,7 @@ async function sendChat() {
     </aside>
 
     <main>
-      <header v-if="active !== 'handwriting'">
+      <header>
         <div>
           <p>大学生心理健康智能交互平台</p>
           <h1>{{ title }}</h1>
@@ -102,9 +101,7 @@ async function sendChat() {
         <span class="status">本地研究原型</span>
       </header>
 
-      <HandwritingCollectorPage v-if="active === 'handwriting'" @exit="active = 'home'" />
-
-      <section v-else-if="active === 'home'" class="page">
+      <section v-if="active === 'home'" class="page">
         <div class="hero">
           <div>
             <span class="eyebrow">今天也值得被认真对待</span>
@@ -182,11 +179,17 @@ async function sendChat() {
 
       <section v-else class="page">
         <div class="feature-intro">
-          <span class="eyebrow">{{ active === 'projective' ? '探索性功能' : '核心功能' }}</span>
+          <span class="eyebrow">{{
+            active === 'handwriting' || active === 'projective' ? '探索性功能' : '核心功能'
+          }}</span>
           <h2 v-if="active === 'journal'">电子手账与多维记录</h2>
+          <h2 v-else-if="active === 'handwriting'">动态笔迹行为观察</h2>
           <h2 v-else-if="active === 'projective'">房树人与心理沙盘</h2>
           <h2 v-else>冥想练习与心理科普</h2>
           <p v-if="active === 'journal'">记录事件、感受和身体状态，逐步形成仅属于你的纵向趋势。</p>
+          <p v-else-if="active === 'handwriting'">
+            采集速度、停顿、轨迹与设备压力等客观特征，不据此判断人格或疾病。
+          </p>
           <p v-else-if="active === 'projective'">
             AI仅辅助描述可观察元素并提出自我探索问题，不自动给出心理结论。
           </p>
