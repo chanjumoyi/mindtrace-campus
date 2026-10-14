@@ -25,6 +25,9 @@ button {
   display: grid;
   grid-template-columns: 248px 1fr;
 }
+.shell.collector-mode {
+  display: block;
+}
 aside {
   position: sticky;
   top: 0;
