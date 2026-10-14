@@ -99,17 +99,26 @@ function Identity({ flow }: { flow: FlowControls }) {
 function Questionnaire({ flow }: { flow: FlowControls }) {
   const study = useStudy();
   useResetScroll();
+  const [questionIndex, setQuestionIndex] = useState(0);
   const answered = study.answers.filter(Boolean).length;
+  const question = questions[questionIndex];
+  const isLastQuestion = questionIndex === questions.length - 1;
   return <MobileScroll className="app-screen"><main className="screen-body questionnaire">
-    <div className="progress-row"><span>步骤 2 / 3</span><strong>{answered}/{questions.length}</strong></div>
-    <div className="progress-track"><i style={{ width: `${(answered / questions.length) * 100}%` }} /></div>
+    <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{questions.length}</strong></div>
+    <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div>
     <h2>此刻的感受</h2><p className="subcopy">请根据现在的真实感受作答，没有正确答案。</p>
-    {questions.map((question, index) => <section className="question-card" key={question}>
-      <p><b>{index + 1}</b>{question}</p><div className="scale" role="radiogroup" aria-label={question}>
-        {[1, 2, 3, 4, 5].map((value) => <button key={value} className={study.answers[index] === value ? "selected" : ""} onClick={() => study.setAnswer(index, value)} aria-label={`${value}分`}>{value}</button>)}
+    <section className="question-card single-question" key={question}>
+      <p><b>{questionIndex + 1}</b>{question}</p><div className="scale" role="radiogroup" aria-label={question}>
+        {[1, 2, 3, 4, 5].map((value) => <button key={value} className={study.answers[questionIndex] === value ? "selected" : ""} onClick={() => study.setAnswer(questionIndex, value)} aria-label={`${value}分`}>{value}</button>)}
       </div><div className="scale-label"><span>完全不符合</span><span>非常符合</span></div>
-    </section>)}
-    <button className="primary-button" disabled={answered !== questions.length} onClick={() => flow.push(collectionScreen)}>进入书写采集</button>
+    </section>
+    <div className={`question-nav ${questionIndex === 0 ? "single-action" : ""}`}>
+      {questionIndex > 0 && <button className="secondary-button" onClick={() => setQuestionIndex((current) => current - 1)}>上一题</button>}
+      <button className="primary-button" disabled={!study.answers[questionIndex]} onClick={() => {
+        if (isLastQuestion && answered === questions.length) flow.push(collectionScreen);
+        else setQuestionIndex((current) => Math.min(questions.length - 1, current + 1));
+      }}>{isLastQuestion ? "进入书写采集" : "下一题"}</button>
+    </div>
   </main></MobileScroll>;
 }
 
@@ -124,7 +133,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
   const penSeen = useRef(false);
   const pressureRange = useRef({ min: 1, max: 0 });
   const [pointCount, setPointCount] = useState(0);
-  const [inputState, setInputState] = useState({ pointerType: "", livePressure: 0, pressureDetected: false });
+  const [pointerType, setPointerType] = useState("");
 
   useEffect(() => {
     const stopDrawing = () => { drawing.current = false; activePointerId.current = null; };
@@ -145,12 +154,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
       pressureRange.current.min = Math.min(pressureRange.current.min, sample.pressure);
       pressureRange.current.max = Math.max(pressureRange.current.max, sample.pressure);
     }
-    const pressureDetected = penSeen.current && pressureRange.current.max - pressureRange.current.min >= 0.01;
-    setInputState((current) => ({
-      pointerType: penSeen.current ? "pen" : sample.pointerType || current.pointerType,
-      livePressure: sample.pointerType === "pen" ? sample.pressure : 0,
-      pressureDetected,
-    }));
+    setPointerType((current) => penSeen.current ? "pen" : sample.pointerType || current);
   };
 
   const draw = (point: Point, previous?: Point) => {
@@ -165,7 +169,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     if (!context) return;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.lineCap = "round"; context.lineJoin = "round"; context.strokeStyle = "#24332f";
-    context.lineWidth = 1.8 + point.pressure * 2.8; context.beginPath();
+    context.lineWidth = 0.7 + point.pressure * 1.8; context.beginPath();
     if (previous && previous.strokeId === point.strokeId) context.moveTo(previous.x, previous.y);
     else context.moveTo(point.x - 0.01, point.y - 0.01);
     context.lineTo(point.x, point.y); context.stroke();
@@ -194,13 +198,11 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     if (recordEnd) record(event, "up");
     drawing.current = false;
     activePointerId.current = null;
-    setInputState((current) => ({ ...current, livePressure: 0 }));
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
   };
   const clear = () => {
     points.current = []; strokeId.current = 0; startedAt.current = ""; setPointCount(0);
     drawing.current = false; activePointerId.current = null; pressureRange.current = { min: 1, max: 0 };
-    setInputState((current) => ({ ...current, livePressure: 0, pressureDetected: false }));
     const canvas = canvasRef.current; canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
   };
   const finish = () => {
@@ -212,14 +214,9 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
       strokeCount: strokeId.current,
       pressureDetected: penSeen.current && pressureRange.current.max - pressureRange.current.min >= 0.01 });
   };
-  const inputLabel = inputState.pointerType === "pen" ? "数位笔已识别" : inputState.pointerType ? "鼠标兼容模式" : "等待数位笔输入";
-  const inputHint = inputState.pointerType === "pen"
-    ? inputState.pressureDetected ? "已检测到动态笔压" : "已识别笔尖，继续用不同力度书写以检查压感"
-    : inputState.pointerType ? "当前设备未提供笔压；请在数位板驱动中开启 Windows Ink" : "笔尖悬停不会留下轨迹，接触画布后才开始采集";
-  return <><div className={`device-check ${inputState.pointerType === "pen" ? "pen-ready" : inputState.pointerType ? "compat-mode" : ""}`}>
-    <div><strong>{inputLabel}</strong><span>{inputHint}</span></div>
-    <div className="pressure-value"><small>实时笔压</small><b>{Math.round(inputState.livePressure * 100)}%</b></div>
-    <div className="pressure-track"><i style={{ width: `${Math.max(0, Math.min(100, inputState.livePressure * 100))}%` }} /></div>
+  const inputLabel = pointerType === "pen" ? "数位笔模式" : pointerType ? "设备处于鼠标兼容模式，请开启 Windows Ink" : "接触画布后开始书写";
+  return <><div className={`device-check ${pointerType === "pen" ? "pen-ready" : pointerType ? "compat-mode" : ""}`}>
+    <strong>{inputLabel}</strong>
   </div>
   <div className="canvas-wrap" data-scroll-drag="ignore"><canvas ref={canvasRef} aria-label="书写区域" data-point-count={pointCount} data-drawing={drawing.current ? "true" : "false"}
     onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { startedAt.current = new Date().toISOString(); startTime.current = performance.now(); } record(event, "down"); }}
@@ -228,8 +225,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     onPointerCancel={(event) => endStroke(event, false)}
     onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { drawing.current = false; activePointerId.current = null; } }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
-    <div className="canvas-meta"><span>{strokeId.current} 笔</span><span>{pointCount} 个采样点</span><button onClick={clear}>清空重写</button></div>
-    <button className="primary-button" disabled={pointCount < 3} onClick={finish}>确认本页书写</button></>;
+    <div className="writing-actions"><button className="secondary-button" onClick={clear}>清空重写</button><button className="primary-button" disabled={pointCount < 3} onClick={finish}>确认本页书写</button></div></>;
 }
 
 function Collection({ flow }: { flow: FlowControls }) {
@@ -265,7 +261,6 @@ function Review() {
   const study = useStudy();
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false);
-  const pointTotal = study.attempts.reduce((sum, attempt) => sum + attempt.points.length, 0);
   const save = async () => {
     setBusy(true);
     const payload = { schemaVersion: "1.0.0", sessionId: `${study.participantId}-${study.roundId}`,
@@ -280,8 +275,7 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2><p className="subcopy">请保存到本机并导出数据文件，随后可交给研究人员统一整理。</p>
-    <div className="summary-grid"><div><strong>{tasks.length}</strong><span>书写任务</span></div><div><strong>{pointTotal}</strong><span>轨迹点</span></div><div><strong>{study.answers.length}</strong><span>量表题目</span></div><div><strong>{study.attempts.filter((a) => a.pressureDetected).length}</strong><span>有压感任务</span></div></div>
-    <div className="data-note"><strong>数据包含</strong><p>匿名编号、量表答案、完整句子与自由书写轨迹、时间、压力、倾角、笔画和设备信息。</p></div>
+    <div className="data-note"><strong>采集内容已隐藏</strong><p>采集细节仅在导出文件中完整保留，当前界面不展示任何具体数值。</p></div>
     <button className="primary-button" disabled={busy} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
   </main></MobileScroll>;
