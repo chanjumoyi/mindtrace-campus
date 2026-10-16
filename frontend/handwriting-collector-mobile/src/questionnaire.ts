@@ -54,7 +54,11 @@ export const QUESTIONNAIRE_ITEMS: readonly QuestionnaireItem[] = [
 
 const symptomDomains = ["mood_interest", "worry_tension", "stress_coping", "sleep_energy_attention"] as const;
 
-export function calculateQuestionnaireSummary(answers: readonly QuestionnaireAnswer[], consentAccepted = true) {
+export function calculateQuestionnaireSummary(
+  answers: readonly QuestionnaireAnswer[],
+  consentAccepted = true,
+  responseTimesMs: readonly number[] = [],
+) {
   const normalized = QUESTIONNAIRE_ITEMS.map((_, index) => answers[index]);
   const valid = normalized.every((value) => value === undefined || value === null || Number.isInteger(value) && value >= 0 && value <= 4);
   const answeredCount = normalized.filter((value) => typeof value === "number").length;
@@ -94,10 +98,13 @@ export function calculateQuestionnaireSummary(answers: readonly QuestionnaireAns
   if (missingItemIds.length) qcFlags.push("missing_items");
   if (complete && normalized.every((value) => value === normalized[0])) qcFlags.push("all_same_response");
   if (symptomsComplete && symptomValues.every((value) => value === 0) && impactI !== null && impactI >= 3) qcFlags.push("impact_mismatch");
+  const validResponseTimes = responseTimesMs.filter((value) => Number.isFinite(value) && value >= 0);
+  const fastResponseCount = validResponseTimes.filter((value) => value < 1000).length;
+  if (validResponseTimes.length === QUESTIONNAIRE_ITEMS.length && fastResponseCount >= 14) qcFlags.push("rapid_response_pattern");
 
   const recordStatus = !consentAccepted || !valid
     ? "excluded"
-    : qcFlags.includes("impact_mismatch")
+    : qcFlags.includes("impact_mismatch") || qcFlags.includes("rapid_response_pattern")
       ? "review_required"
       : complete
         ? "usable_full"
@@ -117,6 +124,12 @@ export function calculateQuestionnaireSummary(answers: readonly QuestionnaireAns
     impactI,
     resultTitle,
     scoreRuleVersion: SCORE_RULE_VERSION,
+    responseTiming: {
+      recordedItemCount: validResponseTimes.length,
+      totalMs: Math.round(validResponseTimes.reduce((total, value) => total + value, 0) * 10) / 10,
+      underOneSecondCount: fastResponseCount,
+      qualityRule: "review when at least 14 of 18 item responses are under 1000 ms",
+    },
     quality: {
       recordStatus,
       qcFlags,

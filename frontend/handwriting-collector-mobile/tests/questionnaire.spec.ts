@@ -66,3 +66,11 @@ test("missing consent excludes the record without changing answers", () => {
   expect(summary.quality.recordStatus).toBe("excluded");
   expect(summary.quality.exclusionReason).toBe("consent_not_granted");
 });
+
+test("a very fast response pattern is retained for manual review", () => {
+  const responseTimes = [...Array(14).fill(700), ...Array(4).fill(1400)];
+  const summary = calculateQuestionnaireSummary(Array(18).fill(0), true, responseTimes);
+  expect(summary.responseTiming.underOneSecondCount).toBe(14);
+  expect(summary.quality.qcFlags).toContain("rapid_response_pattern");
+  expect(summary.quality.recordStatus).toBe("review_required");
+});

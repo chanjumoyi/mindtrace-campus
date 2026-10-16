@@ -7,7 +7,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { FlowStack, KeyboardInput, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
+import { FlowStack, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
+import { formatTestNumber, getNextTestNumber, getOrCreateParticipantId, markTestCompleted } from "./identity";
 import {
   QUESTIONNAIRE_ID,
   QUESTIONNAIRE_ITEMS,
@@ -59,8 +60,8 @@ type AnswerRecord = {
 type AnswerEvent = AnswerRecord & { revision: number; previousScore: QuestionnaireScore | null | "unanswered" };
 
 type StudyState = {
-  participantId: string; setParticipantId: (value: string) => void;
-  roundId: string; assessmentId: string; sessionStartedAt: string; consent: boolean; consentAcceptedAt: string;
+  participantId: string; testNumber: number; roundId: string; assessmentId: string;
+  sessionStartedAt: string; consent: boolean; consentAcceptedAt: string;
   setConsent: (value: boolean) => void;
   answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
   setAnswer: (index: number, value: QuestionnaireScore | null, shownAt: string, responseTimeMs: number) => void;
@@ -126,13 +127,12 @@ function assessQuality(task: (typeof tasks)[number], metrics: QualityMetrics, po
   return { status: blockingIssues ? "invalid" : boundaryWarning ? "partial" : "usable", canSubmit: blockingIssues === 0, issues };
 }
 
-function makeParticipantId() { return `P${Math.random().toString(36).slice(2, 8).toUpperCase()}`; }
 function makeAssessmentId() {
   return globalThis.crypto?.randomUUID?.() ?? `A-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 function makeRoundId() {
   const now = new Date();
-  return `${now.toISOString().slice(0, 10).replaceAll("-", "")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  return `${formatLocalDate(now).replaceAll("-", "")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
 }
 function Header({ flow, title }: { flow: FlowControls; title: string }) {
   return <div className="app-header"><button className="back-button" onClick={flow.pop} disabled={!flow.canGoBack} aria-label="返回">‹</button><span>{title}</span><span /></div>;
@@ -171,13 +171,11 @@ function Identity({ flow }: { flow: FlowControls }) {
   useResetScroll();
   return <MobileScroll className="app-screen"><main className="screen-body">
     <span className="step-pill">步骤 1 / 3</span><h2>参与者识别</h2>
-    <p className="subcopy">使用匿名编号即可，请勿填写姓名、手机号等个人信息。</p>
-    <label className="field-label" htmlFor="participant">匿名参与者编号</label>
-    <KeyboardInput id="participant" className="text-field" value={study.participantId} maxLength={20}
-      onChange={(event) => study.setParticipantId(event.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))} />
-    <div className="round-card"><span>本次轮次</span><strong>{study.roundId}</strong><small>编号会根据开始时间自动生成</small></div>
+    <p className="subcopy">编号由本设备首次使用时自动生成，同一个人后续采集会继续使用该编号。</p>
+    <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong><small>自动生成并保存在本设备，无法手动修改</small></div>
+    <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
     <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解采集内容，并同意本次匿名问卷和书写数据用于研究分析与模型开发，并保存在本机。</span></label>
-    <button className="primary-button" disabled={!study.participantId.trim() || !study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
+    <button className="primary-button" disabled={!study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
   </main></MobileScroll>;
 }
 
@@ -349,7 +347,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; } }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
     {pointCount > 0 && <p className={`quality-hint ${liveQuality.canSubmit ? "ready" : ""}`}>{liveQuality.canSubmit ? "本页书写质量已达到提交要求" : liveQuality.issues[0]}</p>}
-    <div className="writing-actions"><button className="secondary-button" onClick={clear}>清空重写</button><button className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
+    <div className="writing-actions" data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button><button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
 }
 
 function Collection({ flow }: { flow: FlowControls }) {
@@ -404,16 +402,19 @@ function Review() {
   const save = async () => {
     setBusy(true); setSaveError("");
     const exportedAt = new Date().toISOString();
-    const sessionId = `${study.participantId}-${study.roundId}-${study.assessmentId}`;
+    const sessionId = `${study.participantId}-${formatTestNumber(study.testNumber)}-${study.assessmentId}`;
     const recallEnd = new Date(exportedAt); const recallStart = new Date(recallEnd); recallStart.setDate(recallStart.getDate() - 13);
-    const summary = calculateQuestionnaireSummary(study.answers, study.consent);
     const answeredTimes = study.answerRecords.flatMap((record) => record ? [record.answeredAt] : []);
-    const payload = { schemaVersion: "1.2.0", appVersion: "handwriting-collector-mobile/1.2.0",
-      sessionId, participantId: study.participantId, roundId: study.roundId, assessmentId: study.assessmentId,
+    const responseTimesMs = study.answerRecords.flatMap((record) => record ? [record.responseTimeMs] : []);
+    const summary = calculateQuestionnaireSummary(study.answers, study.consent, responseTimesMs);
+    const payload = { schemaVersion: "1.3.0", appVersion: "handwriting-collector-mobile/1.3.0",
+      sessionId, participantId: study.participantId, testNumber: study.testNumber,
+      testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, exportedAt,
       consent: { status: study.consent ? "granted" : "not_granted", accepted: study.consent, acceptedAt: study.consentAcceptedAt,
         version: "local-anonymous-collection-v1.1", dataUseScope: ["research", "model_development"] },
-      questionnaire: { assessmentId: study.assessmentId, instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
+      questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
+        instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
         responseSchemaVersion: "questionnaire-response/1.1.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
         recallPeriod: { days: 14, includesToday: true, startDate: formatLocalDate(recallStart), endDate: formatLocalDate(recallEnd),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
@@ -423,9 +424,10 @@ function Review() {
         derived: { completionStatus: summary.completionStatus, answeredCount: summary.answeredCount,
           missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, symptomSumS: summary.symptomSumS,
           breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
-          resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion },
+          resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion,
+          responseTiming: summary.responseTiming },
         quality: summary.quality, linkedSessionIds: [sessionId] },
-      attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId,
+      attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
         attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
       qualitySummary: { status: study.attempts.every((attempt) => attempt.quality.status === "usable") ? "usable" : "partial",
         questionnaireRecordStatus: summary.quality.recordStatus, questionnaireQcFlags: summary.quality.qcFlags,
@@ -435,6 +437,7 @@ function Review() {
       device: collectDeviceContext() };
     try {
       await storePackage(payload);
+      markTestCompleted(study.participantId, study.testNumber);
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const link = document.createElement("a"); link.href = url; link.download = `${payload.sessionId}.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setSaved(true);
@@ -460,7 +463,8 @@ const reviewScreen = screen("review", "完成采集", () => <Review />);
 const welcomeScreen: FlowScreen = { id: "welcome", render: (flow) => <Welcome flow={flow} /> };
 
 export default function Prototype() {
-  const [participantId, setParticipantId] = useState(makeParticipantId);
+  const participantId = useMemo(getOrCreateParticipantId, []);
+  const testNumber = useMemo(() => getNextTestNumber(participantId), [participantId]);
   const [consent, setConsentState] = useState(false); const [consentAcceptedAt, setConsentAcceptedAt] = useState("");
   const [answers, setAnswers] = useState<QuestionnaireAnswer[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(undefined));
   const [answerRecords, setAnswerRecords] = useState<(AnswerRecord | null)[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(null));
@@ -468,7 +472,7 @@ export default function Prototype() {
   const [attempts, setAttempts] = useState<Attempt[]>([]); const roundId = useMemo(makeRoundId, []);
   const assessmentId = useMemo(makeAssessmentId, []);
   const sessionStartedAt = useMemo(() => new Date().toISOString(), []);
-  const value = useMemo<StudyState>(() => ({ participantId, setParticipantId, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
+  const value = useMemo<StudyState>(() => ({ participantId, testNumber, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
     setConsent: (accepted) => { setConsentState(accepted); setConsentAcceptedAt(accepted ? new Date().toISOString() : ""); },
     answers, answerRecords, setAnswer: (index, score, shownAt, responseTimeMs) => {
       const item = QUESTIONNAIRE_ITEMS[index];
@@ -483,6 +487,6 @@ export default function Prototype() {
       setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
       setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
     }, answerEvents, attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
-  [participantId, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
+  [participantId, testNumber, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;
 }
