@@ -8,6 +8,17 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FlowStack, KeyboardInput, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
+import {
+  QUESTIONNAIRE_ID,
+  QUESTIONNAIRE_ITEMS,
+  QUESTIONNAIRE_ITEM_SET_HASH,
+  QUESTIONNAIRE_VERSION,
+  RESPONSE_OPTIONS,
+  calculateQuestionnaireSummary,
+  formatLocalDate,
+  type QuestionnaireAnswer,
+  type QuestionnaireScore,
+} from "./questionnaire";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -40,24 +51,23 @@ type Attempt = {
   metrics: AttemptMetrics; quality: QualityResult;
 };
 
-type AnswerRecord = { questionId: string; question: string; score: number; shownAt: string; answeredAt: string; responseTimeMs: number };
+type AnswerRecord = {
+  questionId: string; itemNumber: number; domain: string; domainLabel: string; question: string;
+  score: QuestionnaireScore | null; responseLabel: string | null; dayRange: string | null;
+  missingReason: "prefer_not_to_answer" | null; shownAt: string; answeredAt: string; responseTimeMs: number;
+};
+type AnswerEvent = AnswerRecord & { revision: number; previousScore: QuestionnaireScore | null | "unanswered" };
 
 type StudyState = {
   participantId: string; setParticipantId: (value: string) => void;
-  roundId: string; sessionStartedAt: string; consent: boolean; consentAcceptedAt: string;
+  roundId: string; assessmentId: string; sessionStartedAt: string; consent: boolean; consentAcceptedAt: string;
   setConsent: (value: boolean) => void;
-  answers: number[]; answerRecords: (AnswerRecord | null)[];
-  setAnswer: (index: number, value: number, shownAt: string, responseTimeMs: number) => void;
+  answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
+  setAnswer: (index: number, value: QuestionnaireScore | null, shownAt: string, responseTimeMs: number) => void;
   attempts: Attempt[]; addAttempt: (attempt: Attempt) => void;
 };
 
 const StudyContext = createContext<StudyState | null>(null);
-const questions = [
-  "此刻，我感到平静和放松",
-  "此刻，我感到有压力或紧张",
-  "此刻，我能够集中注意力",
-  "此刻，我感到低落或提不起精神",
-];
 const tasks = [
   { id: "PRESS_CHECK", version: "1.1", title: "压力热身", prompt: "请用自然力度画三条横线", hint: "轻松书写即可，不需要刻意用力。", quality: { minStrokes: 3, minMoves: 24, minDurationMs: 500, minPathLength: 100, requirePressure: true } },
   { id: "COPY_SENTENCE", version: "1.1", title: "完整句子", prompt: "请抄写：今天我愿意认真感受自己的状态。", hint: "按平时写字的速度，写完整句话。", quality: { minStrokes: 20, minMoves: 180, minDurationMs: 4000, minPathLength: 500, requirePressure: false } },
@@ -117,6 +127,9 @@ function assessQuality(task: (typeof tasks)[number], metrics: QualityMetrics, po
 }
 
 function makeParticipantId() { return `P${Math.random().toString(36).slice(2, 8).toUpperCase()}`; }
+function makeAssessmentId() {
+  return globalThis.crypto?.randomUUID?.() ?? `A-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 function makeRoundId() {
   const now = new Date();
   return `${now.toISOString().slice(0, 10).replaceAll("-", "")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
@@ -163,7 +176,7 @@ function Identity({ flow }: { flow: FlowControls }) {
     <KeyboardInput id="participant" className="text-field" value={study.participantId} maxLength={20}
       onChange={(event) => study.setParticipantId(event.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))} />
     <div className="round-card"><span>本次轮次</span><strong>{study.roundId}</strong><small>编号会根据开始时间自动生成</small></div>
-    <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解采集内容，并同意在本机保存本次匿名数据。</span></label>
+    <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解采集内容，并同意本次匿名问卷和书写数据用于研究分析与模型开发，并保存在本机。</span></label>
     <button className="primary-button" disabled={!study.participantId.trim() || !study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
   </main></MobileScroll>;
 }
@@ -174,26 +187,31 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
   const [questionIndex, setQuestionIndex] = useState(0);
   const questionShown = useRef({ index: 0, iso: new Date().toISOString(), performanceMs: performance.now() });
   useEffect(() => { questionShown.current = { index: questionIndex, iso: new Date().toISOString(), performanceMs: performance.now() }; }, [questionIndex]);
-  const answered = study.answers.filter(Boolean).length;
-  const question = questions[questionIndex];
-  const isLastQuestion = questionIndex === questions.length - 1;
+  const resolved = study.answers.filter((value) => value !== undefined).length;
+  const question = QUESTIONNAIRE_ITEMS[questionIndex];
+  const isLastQuestion = questionIndex === QUESTIONNAIRE_ITEMS.length - 1;
   return <MobileScroll className="app-screen"><main className="screen-body questionnaire">
-    <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{questions.length}</strong></div>
-    <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div>
-    <h2>此刻的感受</h2><p className="subcopy">请根据现在的真实感受作答，没有正确答案。</p>
-    <section className="question-card single-question" key={question}>
-      <p><b>{questionIndex + 1}</b>{question}</p><div className="scale" role="radiogroup" aria-label={question}>
-        {[1, 2, 3, 4, 5].map((value) => <button key={value} className={study.answers[questionIndex] === value ? "selected" : ""} onClick={() => {
+    <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{QUESTIONNAIRE_ITEMS.length}</strong></div>
+    <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / QUESTIONNAIRE_ITEMS.length) * 100}%` }} /></div>
+    <h2>过去两周的状态</h2><p className="subcopy">请按过去 14 天（包括今天）出现的天数选择。</p>
+    <section className="question-card single-question" key={question.id}>
+      <span className="question-domain">{question.domainLabel}</span>
+      <p><b>{question.number}</b>{question.text}</p><div className="frequency-scale" role="radiogroup" aria-label={question.text}>
+        {RESPONSE_OPTIONS.map((option) => <button key={option.score} className={study.answers[questionIndex] === option.score ? "selected" : ""} onClick={() => {
           const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
-          study.setAnswer(questionIndex, value, shown.iso, performance.now() - shown.performanceMs);
-        }} aria-label={`${value}分`}>{value}</button>)}
-      </div><div className="scale-label"><span>完全不符合</span><span>非常符合</span></div>
+          study.setAnswer(questionIndex, option.score, shown.iso, performance.now() - shown.performanceMs);
+        }} aria-checked={study.answers[questionIndex] === option.score} role="radio"><strong>{option.label}</strong><small>{option.days}</small></button>)}
+      </div>
+      <button className={`skip-answer ${study.answers[questionIndex] === null ? "selected" : ""}`} onClick={() => {
+        const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
+        study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
+      }}>{study.answers[questionIndex] === null ? "已选择暂不回答" : "暂不回答此题"}</button>
     </section>
     <div className={`question-nav ${questionIndex === 0 ? "single-action" : ""}`}>
       {questionIndex > 0 && <button className="secondary-button" onClick={() => setQuestionIndex((current) => current - 1)}>上一题</button>}
-      <button className="primary-button" disabled={!study.answers[questionIndex]} onClick={() => {
-        if (isLastQuestion && answered === questions.length) flow.push(collectionScreen);
-        else setQuestionIndex((current) => Math.min(questions.length - 1, current + 1));
+      <button className="primary-button" disabled={study.answers[questionIndex] === undefined} onClick={() => {
+        if (isLastQuestion && resolved === QUESTIONNAIRE_ITEMS.length) flow.push(collectionScreen);
+        else setQuestionIndex((current) => Math.min(QUESTIONNAIRE_ITEMS.length - 1, current + 1));
       }}>{isLastQuestion ? "进入书写采集" : "下一题"}</button>
     </div>
   </main></MobileScroll>;
@@ -382,31 +400,56 @@ function collectDeviceContext() {
 function Review() {
   const study = useStudy();
   useResetScroll();
-  const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
   const save = async () => {
-    setBusy(true);
+    setBusy(true); setSaveError("");
     const exportedAt = new Date().toISOString();
-    const payload = { schemaVersion: "1.1.0", appVersion: "handwriting-collector-mobile/1.1.0",
-      sessionId: `${study.participantId}-${study.roundId}`, participantId: study.participantId, roundId: study.roundId,
+    const sessionId = `${study.participantId}-${study.roundId}-${study.assessmentId}`;
+    const recallEnd = new Date(exportedAt); const recallStart = new Date(recallEnd); recallStart.setDate(recallStart.getDate() - 13);
+    const summary = calculateQuestionnaireSummary(study.answers, study.consent);
+    const answeredTimes = study.answerRecords.flatMap((record) => record ? [record.answeredAt] : []);
+    const payload = { schemaVersion: "1.2.0", appVersion: "handwriting-collector-mobile/1.2.0",
+      sessionId, participantId: study.participantId, roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, exportedAt,
-      consent: { accepted: study.consent, acceptedAt: study.consentAcceptedAt, version: "local-anonymous-collection-v1" },
-      questionnaire: { instrumentId: "MINDTRACE_STATE_4", version: "1.0", completedAt: study.answerRecords.filter(Boolean).at(-1)?.answeredAt ?? exportedAt,
-        items: study.answerRecords }, attempts: study.attempts,
+      consent: { status: study.consent ? "granted" : "not_granted", accepted: study.consent, acceptedAt: study.consentAcceptedAt,
+        version: "local-anonymous-collection-v1.1", dataUseScope: ["research", "model_development"] },
+      questionnaire: { assessmentId: study.assessmentId, instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
+        responseSchemaVersion: "questionnaire-response/1.1.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
+        recallPeriod: { days: 14, includesToday: true, startDate: formatLocalDate(recallStart), endDate: formatLocalDate(recallEnd),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+        startedAt: study.answerRecords.find(Boolean)?.shownAt ?? study.sessionStartedAt,
+        submittedAt: answeredTimes.sort().at(-1) ?? exportedAt,
+        responseScale: RESPONSE_OPTIONS, items: study.answerRecords, responseEvents: study.answerEvents,
+        derived: { completionStatus: summary.completionStatus, answeredCount: summary.answeredCount,
+          missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, symptomSumS: summary.symptomSumS,
+          breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
+          resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion },
+        quality: summary.quality, linkedSessionIds: [sessionId] },
+      attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId,
+        attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
       qualitySummary: { status: study.attempts.every((attempt) => attempt.quality.status === "usable") ? "usable" : "partial",
+        questionnaireRecordStatus: summary.quality.recordStatus, questionnaireQcFlags: summary.quality.qcFlags,
         usableAttempts: study.attempts.filter((attempt) => attempt.quality.status === "usable").length,
         partialAttempts: study.attempts.filter((attempt) => attempt.quality.status === "partial").length,
         invalidAttempts: study.attempts.filter((attempt) => attempt.quality.status === "invalid").length },
       device: collectDeviceContext() };
-    await storePackage(payload);
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = `${payload.sessionId}.json`; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000); setBusy(false); setSaved(true);
+    try {
+      await storePackage(payload);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url; link.download = `${payload.sessionId}.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); setSaved(true);
+    } catch {
+      setSaveError("保存失败，请检查浏览器存储权限后重试。");
+    } finally {
+      setBusy(false);
+    }
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2><p className="subcopy">请保存到本机并导出数据文件，随后可交给研究人员统一整理。</p>
     <div className="data-note"><strong>采集内容已隐藏</strong><p>采集细节仅在导出文件中完整保留，当前界面不展示任何具体数值。</p></div>
     <button className="primary-button" disabled={busy} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
+    {saveError && <p className="save-error" role="alert">{saveError}</p>}
   </main></MobileScroll>;
 }
 
@@ -419,17 +462,27 @@ const welcomeScreen: FlowScreen = { id: "welcome", render: (flow) => <Welcome fl
 export default function Prototype() {
   const [participantId, setParticipantId] = useState(makeParticipantId);
   const [consent, setConsentState] = useState(false); const [consentAcceptedAt, setConsentAcceptedAt] = useState("");
-  const [answers, setAnswers] = useState([0, 0, 0, 0]);
-  const [answerRecords, setAnswerRecords] = useState<(AnswerRecord | null)[]>([null, null, null, null]);
+  const [answers, setAnswers] = useState<QuestionnaireAnswer[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(undefined));
+  const [answerRecords, setAnswerRecords] = useState<(AnswerRecord | null)[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(null));
+  const [answerEvents, setAnswerEvents] = useState<AnswerEvent[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]); const roundId = useMemo(makeRoundId, []);
+  const assessmentId = useMemo(makeAssessmentId, []);
   const sessionStartedAt = useMemo(() => new Date().toISOString(), []);
-  const value = useMemo<StudyState>(() => ({ participantId, setParticipantId, roundId, sessionStartedAt, consent, consentAcceptedAt,
+  const value = useMemo<StudyState>(() => ({ participantId, setParticipantId, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
     setConsent: (accepted) => { setConsentState(accepted); setConsentAcceptedAt(accepted ? new Date().toISOString() : ""); },
     answers, answerRecords, setAnswer: (index, score, shownAt, responseTimeMs) => {
+      const item = QUESTIONNAIRE_ITEMS[index];
+      const option = score === null ? null : RESPONSE_OPTIONS.find((entry) => entry.score === score) ?? null;
+      const answeredAt = new Date().toISOString();
+      const record: AnswerRecord = { questionId: item.id, itemNumber: item.number, domain: item.domain, domainLabel: item.domainLabel,
+        question: item.text, score, responseLabel: option?.label ?? null, dayRange: option?.days ?? null,
+        missingReason: score === null ? "prefer_not_to_answer" : null, shownAt, answeredAt, responseTimeMs: round(responseTimeMs, 1) };
+      const previousScore = answers[index] === undefined ? "unanswered" : answers[index] as QuestionnaireScore | null;
+      const revision = answerEvents.filter((event) => event.questionId === item.id).length + 1;
       setAnswers((current) => current.map((value, i) => i === index ? score : value));
-      setAnswerRecords((current) => current.map((record, i) => i === index ? { questionId: `STATE_${index + 1}`,
-        question: questions[index], score, shownAt, answeredAt: new Date().toISOString(), responseTimeMs: round(responseTimeMs, 1) } : record));
-    }, attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
-  [participantId, roundId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, attempts]);
+      setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
+      setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
+    }, answerEvents, attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
+  [participantId, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;
 }
