@@ -7,8 +7,22 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { FlowStack, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
-import { formatTestNumber, getNextTestNumber, getOrCreateParticipantId, markTestCompleted } from "./identity";
+import { FlowStack, KeyboardInput, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
+import {
+  ADMIN_TEST_ID,
+  CHINA_PROVINCES,
+  GRADE_OPTIONS,
+  buildExportFilename,
+  buildFollowUpParticipantId,
+  createInitialParticipantId,
+  formatTestNumber,
+  getNextTestNumber,
+  isAdministratorTestId,
+  loadParticipantProfile,
+  markTestCompleted,
+  saveParticipantProfile,
+  type ParticipantProfile,
+} from "./identity";
 import {
   QUESTIONNAIRE_ID,
   QUESTIONNAIRE_ITEMS,
@@ -61,7 +75,9 @@ type AnswerEvent = AnswerRecord & { revision: number; previousScore: Questionnai
 
 type StudyState = {
   participantId: string; testNumber: number; roundId: string; assessmentId: string;
+  participantProfile: ParticipantProfile | null;
   sessionStartedAt: string; consent: boolean; consentAcceptedAt: string;
+  setParticipant: (profile: ParticipantProfile) => void; clearParticipant: () => void;
   setConsent: (value: boolean) => void;
   answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
   setAnswer: (index: number, value: QuestionnaireScore | null, shownAt: string, responseTimeMs: number) => void;
@@ -169,13 +185,78 @@ function Welcome({ flow }: { flow: FlowControls }) {
 function Identity({ flow }: { flow: FlowControls }) {
   const study = useStudy();
   useResetScroll();
-  return <MobileScroll className="app-screen"><main className="screen-body">
+  const [mode, setMode] = useState<"initial" | "follow_up" | null>(null);
+  const [age, setAge] = useState("");
+  const [grade, setGrade] = useState<ParticipantProfile["grade"] | "">("");
+  const [provinceCode, setProvinceCode] = useState("");
+  const [prefix, setPrefix] = useState("MT");
+  const [suffix, setSuffix] = useState("");
+  const [identityError, setIdentityError] = useState("");
+
+  const confirmIdentity = () => {
+    setIdentityError("");
+    if (mode === "initial") {
+      const ageYears = Number(age);
+      const province = CHINA_PROVINCES.find((entry) => entry.code === provinceCode);
+      if (!Number.isInteger(ageYears) || ageYears < 10 || ageYears > 100 || !grade || !province) {
+        setIdentityError("请完整填写有效年龄、年级和省份。"); return;
+      }
+      let participantId = createInitialParticipantId(grade);
+      for (let attempt = 0; attempt < 5 && loadParticipantProfile(participantId); attempt += 1) participantId = createInitialParticipantId(grade);
+      const profile: ParticipantProfile = { participantId, collectionMode: "initial", ageYears, grade,
+        provinceCode: province.code, provinceLabel: province.label, profileSource: "created_on_device",
+        isAdministratorTest: false, createdAt: new Date().toISOString() };
+      saveParticipantProfile(profile); study.setParticipant(profile); return;
+    }
+    if (mode === "follow_up") {
+      const participantId = buildFollowUpParticipantId(prefix, grade, suffix);
+      if (!participantId || !grade) { setIdentityError("请输入两位字母、选择年级，并填写四位编号。"); return; }
+      const administrator = isAdministratorTestId(participantId);
+      const stored = loadParticipantProfile(participantId);
+      const profile: ParticipantProfile = administrator
+        ? { participantId: ADMIN_TEST_ID, collectionMode: "follow_up", ageYears: null, grade: "24", provinceCode: null,
+          provinceLabel: null, profileSource: "administrator_test", isAdministratorTest: true, createdAt: null }
+        : stored
+          ? { ...stored, collectionMode: "follow_up", profileSource: "loaded_from_device" }
+          : { participantId, collectionMode: "follow_up", ageYears: null, grade, provinceCode: null,
+            provinceLabel: null, profileSource: "unavailable_on_device", isAdministratorTest: false, createdAt: null };
+      study.setParticipant(profile);
+    }
+  };
+
+  return <MobileScroll className="app-screen"><main className="screen-body identity-screen">
     <span className="step-pill">步骤 1 / 3</span><h2>参与者识别</h2>
-    <p className="subcopy">编号由本设备首次使用时自动生成，同一个人后续采集会继续使用该编号。</p>
-    <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong><small>自动生成并保存在本设备，无法手动修改</small></div>
-    <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
-    <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解采集内容，并同意本次匿名问卷和书写数据用于研究分析与模型开发，并保存在本机。</span></label>
-    <button className="primary-button" disabled={!study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
+    {!study.participantProfile ? <>
+      <p className="subcopy">请选择本次属于初次测试还是后续测试。</p>
+      <div className="identity-mode" role="radiogroup" aria-label="测试类型">
+        <button className={mode === "initial" ? "selected" : ""} onClick={() => { setMode("initial"); setIdentityError(""); }}>初次测试</button>
+        <button className={mode === "follow_up" ? "selected" : ""} onClick={() => { setMode("follow_up"); setIdentityError(""); }}>后续测试</button>
+      </div>
+      {mode === "initial" && <div className="identity-form">
+        <label>年龄<KeyboardInput type="number" inputMode="numeric" min="10" max="100" value={age}
+          onChange={(event) => setAge(event.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="请输入周岁" /></label>
+        <label>年级<select value={grade} onChange={(event) => setGrade(event.target.value as ParticipantProfile["grade"] | "")}>
+          <option value="">请选择</option>{GRADE_OPTIONS.map((value) => <option key={value} value={value}>{value} 级</option>)}</select></label>
+        <label>来自省份<select value={provinceCode} onChange={(event) => setProvinceCode(event.target.value)}>
+          <option value="">请选择</option>{CHINA_PROVINCES.map((province) => <option key={province.code} value={province.code}>{province.label}</option>)}</select></label>
+      </div>}
+      {mode === "follow_up" && <div className="identity-form">
+        <div className="id-segments">
+          <label>前两位<KeyboardInput value={prefix} maxLength={2} onChange={(event) => setPrefix(event.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase())} placeholder="MT" /></label>
+          <label>年级<select value={grade} onChange={(event) => setGrade(event.target.value as ParticipantProfile["grade"] | "")}>
+            <option value="">选择</option>{GRADE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label>后四位<KeyboardInput value={suffix} maxLength={4} onChange={(event) => setSuffix(event.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())} placeholder="例如 A7K9" /></label>
+        </div><small className="admin-hint">管理员测试编号：{ADMIN_TEST_ID}</small>
+      </div>}
+      {identityError && <p className="identity-error" role="alert">{identityError}</p>}
+      <button className="primary-button identity-confirm" disabled={!mode} onClick={confirmIdentity}>{mode === "initial" ? "生成采集编号" : "确认采集编号"}</button>
+    </> : <>
+      <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong><small>编号已经锁定，本轮无法修改</small></div>
+      <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
+      <button className="change-identity" onClick={() => { study.clearParticipant(); setIdentityError(""); }}>重新选择测试类型</button>
+      <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解年龄、年级、省份、问卷和书写数据的采集用途，并同意用于研究分析与模型开发并保存在本机。</span></label>
+      <button className="primary-button" disabled={!study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
+    </>}
   </main></MobileScroll>;
 }
 
@@ -402,17 +483,29 @@ function Review() {
   const save = async () => {
     setBusy(true); setSaveError("");
     const exportedAt = new Date().toISOString();
+    const collectionCompletedAt = study.attempts.at(-1)?.endedAt ?? exportedAt;
     const sessionId = `${study.participantId}-${formatTestNumber(study.testNumber)}-${study.assessmentId}`;
-    const recallEnd = new Date(exportedAt); const recallStart = new Date(recallEnd); recallStart.setDate(recallStart.getDate() - 13);
+    const recallEnd = new Date(collectionCompletedAt); const recallStart = new Date(recallEnd); recallStart.setDate(recallStart.getDate() - 13);
     const answeredTimes = study.answerRecords.flatMap((record) => record ? [record.answeredAt] : []);
     const responseTimesMs = study.answerRecords.flatMap((record) => record ? [record.responseTimeMs] : []);
     const summary = calculateQuestionnaireSummary(study.answers, study.consent, responseTimesMs);
-    const payload = { schemaVersion: "1.3.0", appVersion: "handwriting-collector-mobile/1.3.0",
+    const isAdministratorTest = study.participantProfile?.isAdministratorTest === true;
+    const questionnaireQuality = isAdministratorTest ? { ...summary.quality, recordStatus: "excluded",
+      qcFlags: [...summary.quality.qcFlags, "administrator_test_record"], exclusionReason: "administrator_test_record" } : summary.quality;
+    const allWritingUsable = study.attempts.every((attempt) => attempt.quality.status === "usable");
+    const datasetEligibility = isAdministratorTest ? "excluded_test_record"
+      : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
+        : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
+    const payload = { schemaVersion: "1.4.0", appVersion: "handwriting-collector-mobile/1.4.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
-      createdAt: study.sessionStartedAt, exportedAt,
+      createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
+      dataClassification: isAdministratorTest ? "administrator_test" : "participant_collection",
+      datasetEligibility,
+      participant: { ...study.participantProfile, idComponents: { prefix: study.participantId.split("-")[0],
+        grade: study.participantId.split("-")[1], suffix: study.participantId.split("-")[2] } },
       consent: { status: study.consent ? "granted" : "not_granted", accepted: study.consent, acceptedAt: study.consentAcceptedAt,
-        version: "local-anonymous-collection-v1.1", dataUseScope: ["research", "model_development"] },
+        version: "local-anonymous-collection-v1.2", dataUseScope: ["demographics", "research", "model_development"] },
       questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
         instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
         responseSchemaVersion: "questionnaire-response/1.1.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
@@ -426,11 +519,12 @@ function Review() {
           breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
           resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion,
           responseTiming: summary.responseTiming },
-        quality: summary.quality, linkedSessionIds: [sessionId] },
+        quality: questionnaireQuality, linkedSessionIds: [sessionId] },
       attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
         attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
-      qualitySummary: { status: study.attempts.every((attempt) => attempt.quality.status === "usable") ? "usable" : "partial",
-        questionnaireRecordStatus: summary.quality.recordStatus, questionnaireQcFlags: summary.quality.qcFlags,
+      qualitySummary: { status: allWritingUsable ? "usable" : "partial",
+        questionnaireRecordStatus: questionnaireQuality.recordStatus, questionnaireQcFlags: questionnaireQuality.qcFlags,
+        datasetEligibility,
         usableAttempts: study.attempts.filter((attempt) => attempt.quality.status === "usable").length,
         partialAttempts: study.attempts.filter((attempt) => attempt.quality.status === "partial").length,
         invalidAttempts: study.attempts.filter((attempt) => attempt.quality.status === "invalid").length },
@@ -439,7 +533,8 @@ function Review() {
       await storePackage(payload);
       markTestCompleted(study.participantId, study.testNumber);
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
-      const link = document.createElement("a"); link.href = url; link.download = `${payload.sessionId}.json`; link.click();
+      const link = document.createElement("a"); link.href = url;
+      link.download = buildExportFilename(study.participantId, new Date(collectionCompletedAt)); link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setSaved(true);
     } catch {
       setSaveError("保存失败，请检查浏览器存储权限后重试。");
@@ -463,8 +558,9 @@ const reviewScreen = screen("review", "完成采集", () => <Review />);
 const welcomeScreen: FlowScreen = { id: "welcome", render: (flow) => <Welcome flow={flow} /> };
 
 export default function Prototype() {
-  const participantId = useMemo(getOrCreateParticipantId, []);
-  const testNumber = useMemo(() => getNextTestNumber(participantId), [participantId]);
+  const [participantProfile, setParticipantProfile] = useState<ParticipantProfile | null>(null);
+  const participantId = participantProfile?.participantId ?? "";
+  const [testNumber, setTestNumber] = useState(0);
   const [consent, setConsentState] = useState(false); const [consentAcceptedAt, setConsentAcceptedAt] = useState("");
   const [answers, setAnswers] = useState<QuestionnaireAnswer[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(undefined));
   const [answerRecords, setAnswerRecords] = useState<(AnswerRecord | null)[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(null));
@@ -472,7 +568,9 @@ export default function Prototype() {
   const [attempts, setAttempts] = useState<Attempt[]>([]); const roundId = useMemo(makeRoundId, []);
   const assessmentId = useMemo(makeAssessmentId, []);
   const sessionStartedAt = useMemo(() => new Date().toISOString(), []);
-  const value = useMemo<StudyState>(() => ({ participantId, testNumber, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
+  const value = useMemo<StudyState>(() => ({ participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
+    setParticipant: (profile) => { setParticipantProfile(profile); setTestNumber(getNextTestNumber(profile.participantId)); },
+    clearParticipant: () => { setParticipantProfile(null); setTestNumber(0); setConsentState(false); setConsentAcceptedAt(""); },
     setConsent: (accepted) => { setConsentState(accepted); setConsentAcceptedAt(accepted ? new Date().toISOString() : ""); },
     answers, answerRecords, setAnswer: (index, score, shownAt, responseTimeMs) => {
       const item = QUESTIONNAIRE_ITEMS[index];
@@ -487,6 +585,6 @@ export default function Prototype() {
       setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
       setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
     }, answerEvents, attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
-  [participantId, testNumber, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
+  [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;
 }

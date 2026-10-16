@@ -1,14 +1,22 @@
 import { expect, test } from "@playwright/test";
 
-test("the collector keeps identity read-only and pen-safe actions outside scroll dragging", async ({ page }) => {
+test("initial collection creates the requested ID and keeps pen-safe writing actions", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/");
   await page.getByRole("button", { name: "开始采集" }).click();
 
   const currentScreen = page.locator('.flow-screen[data-flow-current="true"]');
-  await expect(currentScreen).toContainText(/MT-\d{8}-[A-HJ-NP-Z2-9]{6}/);
+  await currentScreen.getByRole("button", { name: "初次测试" }).click();
+  await currentScreen.getByRole("spinbutton", { name: "年龄" }).fill("20");
+  await currentScreen.getByLabel("年级").selectOption("24");
+  await currentScreen.getByLabel("来自省份").selectOption("440000");
+  await currentScreen.getByRole("button", { name: "生成采集编号" }).click();
+
+  await expect(currentScreen).toContainText(/MT-24-[A-HJ-NP-Z2-9]{4}/);
   await expect(currentScreen).toContainText("第 1 次");
-  await expect(currentScreen.locator("#participant")).toHaveCount(0);
+  const participantId = await currentScreen.locator(".identity-card strong").innerText();
+  const storedProfile = await page.evaluate((id) => localStorage.getItem(`mindtrace.participant-profile.v2.${id}`), participantId);
+  expect(JSON.parse(storedProfile ?? "{}")).toMatchObject({ ageYears: 20, grade: "24", provinceCode: "440000", provinceLabel: "广东省" });
 
   await currentScreen.getByRole("checkbox").check();
   await currentScreen.getByRole("button", { name: "继续" }).click();
@@ -21,4 +29,16 @@ test("the collector keeps identity read-only and pen-safe actions outside scroll
   await expect(currentScreen.getByText("压力热身")).toBeVisible();
   await expect(currentScreen.locator(".writing-actions")).toHaveAttribute("data-scroll-drag", "ignore");
   await expect(currentScreen.getByRole("button", { name: "确认本页书写" })).toHaveAttribute("type", "button");
+});
+
+test("follow-up collection accepts the fixed administrator test ID", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始采集" }).click();
+  const currentScreen = page.locator('.flow-screen[data-flow-current="true"]');
+  await currentScreen.getByRole("button", { name: "后续测试" }).click();
+  await currentScreen.getByRole("textbox", { name: "前两位" }).fill("ad");
+  await currentScreen.getByLabel("年级").selectOption("24");
+  await currentScreen.getByRole("textbox", { name: "后四位" }).fill("mast");
+  await currentScreen.getByRole("button", { name: "确认采集编号" }).click();
+  await expect(currentScreen).toContainText("AD-24-MAST");
 });
