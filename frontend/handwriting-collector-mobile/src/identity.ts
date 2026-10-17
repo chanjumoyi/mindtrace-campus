@@ -102,6 +102,6 @@ export function formatExportTimestamp(date: Date) {
     String(date.getHours()).padStart(2, "0"), String(date.getMinutes()).padStart(2, "0")].join("");
 }
 
-export function buildExportFilename(participantId: string, collectionCompletedAt: Date) {
-  return `${participantId}-${formatExportTimestamp(collectionCompletedAt)}.json`;
+export function buildExportFilename(participantId: string, testNumber: number, collectionCompletedAt: Date) {
+  return `${participantId}-${formatTestNumber(testNumber)}-${formatExportTimestamp(collectionCompletedAt)}.json`;
 }

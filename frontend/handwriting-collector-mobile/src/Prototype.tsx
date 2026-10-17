@@ -628,7 +628,7 @@ function Review() {
       markTestCompleted(study.participantId, study.testNumber);
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const link = document.createElement("a"); link.href = url;
-      link.download = buildExportFilename(study.participantId, new Date(collectionCompletedAt)); link.click();
+      link.download = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt)); link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setSaved(true);
     } catch {
       setSaveError("保存失败，请检查浏览器存储权限后重试。");

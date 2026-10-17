@@ -55,5 +55,5 @@ test("test numbers advance only after a completed save", () => {
 
 test("export timestamps use local collection completion time to the minute", () => {
   expect(formatExportTimestamp(new Date(2026, 9, 16, 20, 3, 59))).toBe("202610162003");
-  expect(buildExportFilename("MT-24-A2K9", new Date(2026, 9, 16, 20, 3, 59))).toBe("MT-24-A2K9-202610162003.json");
+  expect(buildExportFilename("MT-24-A2K9", 3, new Date(2026, 9, 16, 20, 3, 59))).toBe("MT-24-A2K9-T003-202610162003.json");
 });
