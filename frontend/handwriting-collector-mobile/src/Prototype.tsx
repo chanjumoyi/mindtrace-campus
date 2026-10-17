@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FlowStack, KeyboardInput, MobileScroll, useKeyboard, type FlowControls, type FlowScreen } from "./mobile";
@@ -184,6 +185,7 @@ function Welcome({ flow }: { flow: FlowControls }) {
 
 function Identity({ flow }: { flow: FlowControls }) {
   const study = useStudy();
+  const keyboard = useKeyboard();
   useResetScroll();
   const [mode, setMode] = useState<"initial" | "follow_up" | null>(null);
   const [age, setAge] = useState("");
@@ -192,6 +194,16 @@ function Identity({ flow }: { flow: FlowControls }) {
   const [prefix, setPrefix] = useState("MT");
   const [suffix, setSuffix] = useState("");
   const [identityError, setIdentityError] = useState("");
+
+  const dismissKeyboardOutsideField = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!keyboard.visible || !(event.target instanceof Element)) return;
+    if (event.target.closest("input, textarea")) return;
+    keyboard.hide();
+  };
+
+  const dismissKeyboardOnEnter = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") keyboard.hide();
+  };
 
   const confirmIdentity = () => {
     setIdentityError("");
@@ -224,7 +236,7 @@ function Identity({ flow }: { flow: FlowControls }) {
     }
   };
 
-  return <MobileScroll className="app-screen"><main className="screen-body identity-screen">
+  return <MobileScroll className="app-screen"><main className="screen-body identity-screen" onPointerDown={dismissKeyboardOutsideField}>
     <span className="step-pill">步骤 1 / 3</span><h2>参与者识别</h2>
     {!study.participantProfile ? <>
       <p className="subcopy">请选择本次属于初次测试还是后续测试。</p>
@@ -234,7 +246,7 @@ function Identity({ flow }: { flow: FlowControls }) {
       </div>
       {mode === "initial" && <div className="identity-form">
         <label>年龄<KeyboardInput type="number" inputMode="numeric" min="10" max="100" value={age}
-          onChange={(event) => setAge(event.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="请输入周岁" /></label>
+          onChange={(event) => setAge(event.target.value.replace(/\D/g, "").slice(0, 3))} onKeyDown={dismissKeyboardOnEnter} placeholder="请输入周岁" /></label>
         <label>年级<select value={grade} onChange={(event) => setGrade(event.target.value as ParticipantProfile["grade"] | "")}>
           <option value="">请选择</option>{GRADE_OPTIONS.map((value) => <option key={value} value={value}>{value} 级</option>)}</select></label>
         <label>来自省份<select value={provinceCode} onChange={(event) => setProvinceCode(event.target.value)}>
@@ -242,10 +254,10 @@ function Identity({ flow }: { flow: FlowControls }) {
       </div>}
       {mode === "follow_up" && <div className="identity-form">
         <div className="id-segments">
-          <label>前两位<KeyboardInput value={prefix} maxLength={2} onChange={(event) => setPrefix(event.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase())} placeholder="MT" /></label>
+          <label>前两位<KeyboardInput value={prefix} maxLength={2} onChange={(event) => setPrefix(event.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase())} onKeyDown={dismissKeyboardOnEnter} placeholder="MT" /></label>
           <label>年级<select value={grade} onChange={(event) => setGrade(event.target.value as ParticipantProfile["grade"] | "")}>
             <option value="">选择</option>{GRADE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label>后四位<KeyboardInput value={suffix} maxLength={4} onChange={(event) => setSuffix(event.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())} placeholder="例如 A7K9" /></label>
+          <label>后四位<KeyboardInput value={suffix} maxLength={4} onChange={(event) => setSuffix(event.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())} onKeyDown={dismissKeyboardOnEnter} placeholder="例如 A7K9" /></label>
         </div><small className="admin-hint">管理员测试编号：{ADMIN_TEST_ID}</small>
       </div>}
       {identityError && <p className="identity-error" role="alert">{identityError}</p>}

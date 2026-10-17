@@ -42,3 +42,22 @@ test("follow-up collection accepts the fixed administrator test ID", async ({ pa
   await currentScreen.getByRole("button", { name: "确认采集编号" }).click();
   await expect(currentScreen).toContainText("AD-24-MAST");
 });
+
+test("identity actions keep visual spacing and the keyboard dismisses outside fields", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始采集" }).click();
+  const currentScreen = page.locator('.flow-screen[data-flow-current="true"]');
+
+  const modeButton = currentScreen.getByRole("button", { name: "初次测试" });
+  const confirmButton = currentScreen.getByRole("button", { name: "确认采集编号" });
+  const [modeBox, confirmBox] = await Promise.all([modeButton.boundingBox(), confirmButton.boundingBox()]);
+  expect(modeBox).not.toBeNull();
+  expect(confirmBox).not.toBeNull();
+  expect((confirmBox?.y ?? 0) - ((modeBox?.y ?? 0) + (modeBox?.height ?? 0))).toBeGreaterThanOrEqual(15);
+
+  await modeButton.click();
+  await currentScreen.getByRole("spinbutton", { name: "年龄" }).click();
+  await expect(page.getByTestId("keyboard-dock")).toHaveAttribute("data-visible", "true");
+  await currentScreen.getByRole("heading", { name: "参与者识别" }).click();
+  await expect(page.getByTestId("keyboard-dock")).toHaveAttribute("data-visible", "false");
+});
