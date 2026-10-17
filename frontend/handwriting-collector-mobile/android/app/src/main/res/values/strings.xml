@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">心迹书写采集</string>
+    <string name="title_activity_main">心迹书写采集</string>
+    <string name="package_name">com.mindtrace.collector</string>
+    <string name="custom_url_scheme">com.mindtrace.collector</string>
+</resources>

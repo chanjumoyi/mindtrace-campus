@@ -38,6 +38,7 @@ import {
 } from "./questionnaire";
 import { selectCopyPrompt, type CopyPromptAssignment } from "./writingPrompts";
 import { assessWritingPattern, type WritingPatternKind } from "./writingQuality";
+import { exportJsonPackage } from "./nativeExport";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -626,10 +627,9 @@ function Review() {
     try {
       await storePackage(payload);
       markTestCompleted(study.participantId, study.testNumber);
-      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
-      const link = document.createElement("a"); link.href = url;
-      link.download = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt)); link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000); setSaved(true);
+      const filename = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
+      await exportJsonPackage(filename, JSON.stringify(payload, null, 2));
+      setSaved(true);
     } catch {
       setSaveError("保存失败，请检查浏览器存储权限后重试。");
     } finally {

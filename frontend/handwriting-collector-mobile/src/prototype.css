@@ -1,6 +1,18 @@
 :root { color: #24332f; font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; }
 button, input { font: inherit; }
 .keyboard-dock[data-visible="false"] { display: none; }
+.native-shell { width: 100%; height: 100%; background: #f7f3ea; }
+.native-shell .phone-stage { width: 100%; height: 100%; padding: 0; }
+.native-shell .phone-scale-box { width: 100% !important; height: 100% !important; }
+.native-shell .phone-device { position: relative; width: 100% !important; height: 100% !important; transform: none !important; }
+.native-shell .device-screen { --device-safe-area-bottom: env(safe-area-inset-bottom, 0px); inset: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; box-shadow: none; cursor: auto; }
+.native-shell .device-screen, .native-shell .device-screen * { cursor: auto !important; }
+.native-shell .device-menu-bar, .native-shell .phone-bezel, .native-shell .device-camera,
+.native-shell .mobile-cursor, .native-shell .status-bar, .native-shell .home-indicator-svg,
+.native-shell .keyboard-dock { display: none !important; }
+.native-shell .mobile-app-viewport { bottom: 0 !important; }
+.native-shell .flow-stack { --flow-header-safe-area: env(safe-area-inset-top, 0px) !important; --flow-header-height: calc(var(--flow-header-content-height) + env(safe-area-inset-top, 0px)) !important; --keyboard-height: 0px !important; }
+.native-shell .mobile-page { --mobile-safe-area-height: env(safe-area-inset-bottom, 0px) !important; --keyboard-height: 0px !important; }
 .app-screen { height: 100%; min-height: 0; background: #f7f3ea; }
 .app-screen .mobile-scroll { overflow: hidden; overscroll-behavior: none; }
 .app-screen .mobile-scroll-content { height: 100%; min-height: 0; }

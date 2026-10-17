@@ -2,6 +2,8 @@
 
 本目录将 `frontend/handwriting-collector-mobile` 构建为只读 Nginx 容器，供服务器人员部署。当前版本是移动端网页应用：采集结果保存在用户设备并导出 JSON，尚未向服务器自动上传数据。
 
+如需生成可安装的 Android APK/AAB，请参阅 [ANDROID.md](./ANDROID.md)。
+
 ## 服务器要求
 
 - Linux 服务器（推荐 Ubuntu 22.04/24.04）
