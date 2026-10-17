@@ -1,0 +1,28 @@
+name: mindtrace-handwriting-collector
+
+services:
+  collector:
+    image: ${COLLECTOR_IMAGE:-mindtrace-handwriting-collector}:${COLLECTOR_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/handwriting-collector/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${COLLECTOR_BIND_ADDRESS:-127.0.0.1}:${COLLECTOR_PORT:-8081}:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m
+      - /var/run:size=1m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
