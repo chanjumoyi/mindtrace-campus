@@ -27,6 +27,7 @@ test("initial collection creates the requested ID and keeps pen-safe writing act
   }
 
   await expect(currentScreen.getByText("压力热身")).toBeVisible();
+  await expect(currentScreen).toContainText("1/4");
   await expect(currentScreen.locator(".writing-actions")).toHaveAttribute("data-scroll-drag", "ignore");
   await expect(currentScreen.getByRole("button", { name: "确认本页书写" })).toHaveAttribute("type", "button");
 });

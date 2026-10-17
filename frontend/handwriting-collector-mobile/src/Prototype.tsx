@@ -32,9 +32,11 @@ import {
   RESPONSE_OPTIONS,
   calculateQuestionnaireSummary,
   formatLocalDate,
+  scoreQuestionnaireAnswer,
   type QuestionnaireAnswer,
   type QuestionnaireScore,
 } from "./questionnaire";
+import { selectCopyPrompt, type CopyPromptAssignment } from "./writingPrompts";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -57,8 +59,15 @@ type AttemptMetrics = {
 type QualityResult = { status: "usable" | "partial" | "invalid"; canSubmit: boolean; issues: string[] };
 type QualityMetrics = Pick<AttemptMetrics, "pointCount" | "movePointCount" | "strokeCount" | "durationMs" | "pathLengthPx" | "outOfBoundsPointCount">;
 
+type WritingTask = {
+  id: string; version: string; title: string; prompt: string; hint: string;
+  quality: { minStrokes: number; minMoves: number; minDurationMs: number; minPathLength: number; requirePressure: boolean };
+  copyPrompt: (CopyPromptAssignment & { repeatIndex: number; totalRepeats: number }) | null;
+};
+
 type Attempt = {
   taskId: string; taskVersion: string; taskTitle: string; prompt: string;
+  copyPrompt: WritingTask["copyPrompt"];
   promptShownAt: string; startedAt: string; endedAt: string;
   canvas: { width: number; height: number; devicePixelRatio: number };
   points: Point[]; strokeCount: number; pressureDetected: boolean;
@@ -69,7 +78,8 @@ type Attempt = {
 
 type AnswerRecord = {
   questionId: string; itemNumber: number; domain: string; domainLabel: string; question: string;
-  score: QuestionnaireScore | null; responseLabel: string | null; dayRange: string | null;
+  score: QuestionnaireScore | null; rawScore: QuestionnaireScore | null; scoredScore: QuestionnaireScore | null;
+  scoringDirection: "direct" | "reverse"; responseLabel: string | null; dayRange: string | null;
   missingReason: "prefer_not_to_answer" | null; shownAt: string; answeredAt: string; responseTimeMs: number;
 };
 type AnswerEvent = AnswerRecord & { revision: number; previousScore: QuestionnaireScore | null | "unanswered" };
@@ -82,15 +92,26 @@ type StudyState = {
   setConsent: (value: boolean) => void;
   answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
   setAnswer: (index: number, value: QuestionnaireScore | null, shownAt: string, responseTimeMs: number) => void;
+  copyPromptAssignment: CopyPromptAssignment | null; prepareWritingPlan: () => void;
   attempts: Attempt[]; addAttempt: (attempt: Attempt) => void;
 };
 
 const StudyContext = createContext<StudyState | null>(null);
-const tasks = [
-  { id: "PRESS_CHECK", version: "1.1", title: "压力热身", prompt: "请用自然力度画三条横线", hint: "轻松书写即可，不需要刻意用力。", quality: { minStrokes: 3, minMoves: 24, minDurationMs: 500, minPathLength: 100, requirePressure: true } },
-  { id: "COPY_SENTENCE", version: "1.1", title: "完整句子", prompt: "请抄写：今天我愿意认真感受自己的状态。", hint: "按平时写字的速度，写完整句话。", quality: { minStrokes: 20, minMoves: 180, minDurationMs: 4000, minPathLength: 500, requirePressure: false } },
-  { id: "FREE_WRITING", version: "1.1", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "建议写 20～30 个字，内容不会上传。", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false } },
-];
+const pressureTask: WritingTask = { id: "PRESS_CHECK", version: "1.1", title: "压力热身", prompt: "请用自然力度画三条横线", hint: "轻松书写即可，不需要刻意用力。", quality: { minStrokes: 3, minMoves: 24, minDurationMs: 500, minPathLength: 100, requirePressure: true }, copyPrompt: null };
+const freeWritingTask: WritingTask = { id: "FREE_WRITING", version: "1.1", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "建议写 20～30 个字，内容不会上传。", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false }, copyPrompt: null };
+
+function createWritingTasks(assignment: CopyPromptAssignment): WritingTask[] {
+  const copyTask = (repeatIndex: number): WritingTask => ({
+    id: `COPY_SENTENCE_REPEAT_${repeatIndex}`,
+    version: "2.0",
+    title: `完整句子 · 第 ${repeatIndex} 遍`,
+    prompt: `请抄写：${assignment.text}`,
+    hint: repeatIndex === 1 ? "请按平时速度完整抄写，下一页会再次抄写同一句。" : "请保持平时速度，将同一句话再完整抄写一遍。",
+    quality: { minStrokes: 24, minMoves: 220, minDurationMs: 5000, minPathLength: 600, requirePressure: false },
+    copyPrompt: { ...assignment, repeatIndex, totalRepeats: 2 },
+  });
+  return [pressureTask, copyTask(1), copyTask(2), freeWritingTask];
+}
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const round = (value: number, digits = 3) => Number(value.toFixed(digits));
@@ -131,7 +152,7 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
   };
 }
 
-function assessQuality(task: (typeof tasks)[number], metrics: QualityMetrics, pointerType: string, pressureDetected: boolean): QualityResult {
+function assessQuality(task: WritingTask, metrics: QualityMetrics, pointerType: string, pressureDetected: boolean): QualityResult {
   const issues: string[] = [];
   if (pointerType !== "pen") issues.push("请使用数位笔书写，并确认驱动已开启 Windows Ink");
   if (metrics.strokeCount < task.quality.minStrokes) issues.push(task.id === "PRESS_CHECK" ? "请完整画出三条横线" : "书写内容过少，请继续完成本页内容");
@@ -301,14 +322,14 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
     <div className={`question-nav ${questionIndex === 0 ? "single-action" : ""}`}>
       {questionIndex > 0 && <button className="secondary-button" onClick={() => setQuestionIndex((current) => current - 1)}>上一题</button>}
       <button className="primary-button" disabled={study.answers[questionIndex] === undefined} onClick={() => {
-        if (isLastQuestion && resolved === QUESTIONNAIRE_ITEMS.length) flow.push(collectionScreen);
+        if (isLastQuestion && resolved === QUESTIONNAIRE_ITEMS.length) { study.prepareWritingPlan(); flow.push(collectionScreen); }
         else setQuestionIndex((current) => Math.min(QUESTIONNAIRE_ITEMS.length - 1, current + 1));
       }}>{isLastQuestion ? "进入书写采集" : "下一题"}</button>
     </div>
   </main></MobileScroll>;
 }
 
-function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComplete: (attempt: Attempt) => void }) {
+function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (attempt: Attempt) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const points = useRef<Point[]>([]);
   const strokeId = useRef(0);
@@ -421,7 +442,7 @@ function WritingPad({ task, onComplete }: { task: (typeof tasks)[number]; onComp
     const rect = canvas.getBoundingClientRect();
     const metrics = calculateMetrics(points.current, promptToFirstContactMs, strokeId.current);
     const quality = assessQuality(task, metrics, pointerType, pressureDetected);
-    onComplete({ taskId: task.id, taskVersion: task.version, taskTitle: task.title, prompt: task.prompt,
+    onComplete({ taskId: task.id, taskVersion: task.version, taskTitle: task.title, prompt: task.prompt, copyPrompt: task.copyPrompt,
       promptShownAt: promptShownAt.current, startedAt: startedAt.current, endedAt: new Date().toISOString(),
       canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, points: points.current,
       strokeCount: strokeId.current, pressureDetected,
@@ -448,6 +469,9 @@ function Collection({ flow }: { flow: FlowControls }) {
   const keyboard = useKeyboard();
   useResetScroll();
   useEffect(() => { keyboard.hide(); }, []);
+  const fallbackAssignment = useMemo(() => selectCopyPrompt(calculateQuestionnaireSummary(study.answers).symptomSumS), [study.answers]);
+  const assignment = study.copyPromptAssignment ?? fallbackAssignment;
+  const tasks = useMemo(() => createWritingTasks(assignment), [assignment]);
   const index = study.attempts.length;
   const task = tasks[Math.min(index, tasks.length - 1)];
   return <MobileScroll className="app-screen writing-screen"><main className="screen-body">
@@ -508,7 +532,7 @@ function Review() {
     const datasetEligibility = isAdministratorTest ? "excluded_test_record"
       : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
         : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
-    const payload = { schemaVersion: "1.4.0", appVersion: "handwriting-collector-mobile/1.4.0",
+    const payload = { schemaVersion: "1.5.0", appVersion: "handwriting-collector-mobile/1.5.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
@@ -520,18 +544,23 @@ function Review() {
         version: "local-anonymous-collection-v1.2", dataUseScope: ["demographics", "research", "model_development"] },
       questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
         instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
-        responseSchemaVersion: "questionnaire-response/1.1.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
+        responseSchemaVersion: "questionnaire-response/1.2.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
         recallPeriod: { days: 14, includesToday: true, startDate: formatLocalDate(recallStart), endDate: formatLocalDate(recallEnd),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         startedAt: study.answerRecords.find(Boolean)?.shownAt ?? study.sessionStartedAt,
         submittedAt: answeredTimes.sort().at(-1) ?? exportedAt,
-        responseScale: RESPONSE_OPTIONS, items: study.answerRecords, responseEvents: study.answerEvents,
+        responseScale: RESPONSE_OPTIONS,
+        scoring: { higherDerivedScoreMeaning: "more_reported_difficulty", rawScoreMeaning: "selected_frequency_option_0_to_4",
+          reverseScoredItemIds: QUESTIONNAIRE_ITEMS.filter((item) => item.scoringDirection === "reverse").map((item) => item.id) },
+        items: study.answerRecords, responseEvents: study.answerEvents,
         derived: { completionStatus: summary.completionStatus, answeredCount: summary.answeredCount,
-          missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, symptomSumS: summary.symptomSumS,
+          missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, scoredItemValues: summary.scoredItemValues, symptomSumS: summary.symptomSumS,
           breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
           resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion,
           responseTiming: summary.responseTiming },
         quality: questionnaireQuality, linkedSessionIds: [sessionId] },
+      writingPlan: { copyPromptAssignment: study.copyPromptAssignment, copyRepeatsRequired: 2,
+        scoreBandPurpose: "sampling_stratification_not_clinical_diagnosis" },
       attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
         attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
       qualitySummary: { status: allWritingUsable ? "usable" : "partial",
@@ -577,26 +606,31 @@ export default function Prototype() {
   const [answers, setAnswers] = useState<QuestionnaireAnswer[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(undefined));
   const [answerRecords, setAnswerRecords] = useState<(AnswerRecord | null)[]>(() => Array(QUESTIONNAIRE_ITEMS.length).fill(null));
   const [answerEvents, setAnswerEvents] = useState<AnswerEvent[]>([]);
+  const [copyPromptAssignment, setCopyPromptAssignment] = useState<CopyPromptAssignment | null>(null);
   const [attempts, setAttempts] = useState<Attempt[]>([]); const roundId = useMemo(makeRoundId, []);
   const assessmentId = useMemo(makeAssessmentId, []);
   const sessionStartedAt = useMemo(() => new Date().toISOString(), []);
   const value = useMemo<StudyState>(() => ({ participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
     setParticipant: (profile) => { setParticipantProfile(profile); setTestNumber(getNextTestNumber(profile.participantId)); },
-    clearParticipant: () => { setParticipantProfile(null); setTestNumber(0); setConsentState(false); setConsentAcceptedAt(""); },
+    clearParticipant: () => { setParticipantProfile(null); setTestNumber(0); setConsentState(false); setConsentAcceptedAt(""); setCopyPromptAssignment(null); },
     setConsent: (accepted) => { setConsentState(accepted); setConsentAcceptedAt(accepted ? new Date().toISOString() : ""); },
     answers, answerRecords, setAnswer: (index, score, shownAt, responseTimeMs) => {
       const item = QUESTIONNAIRE_ITEMS[index];
       const option = score === null ? null : RESPONSE_OPTIONS.find((entry) => entry.score === score) ?? null;
       const answeredAt = new Date().toISOString();
+      const scoredScore = scoreQuestionnaireAnswer(item, score) as QuestionnaireScore | null;
       const record: AnswerRecord = { questionId: item.id, itemNumber: item.number, domain: item.domain, domainLabel: item.domainLabel,
-        question: item.text, score, responseLabel: option?.label ?? null, dayRange: option?.days ?? null,
+        question: item.text, score, rawScore: score, scoredScore, scoringDirection: item.scoringDirection,
+        responseLabel: option?.label ?? null, dayRange: option?.days ?? null,
         missingReason: score === null ? "prefer_not_to_answer" : null, shownAt, answeredAt, responseTimeMs: round(responseTimeMs, 1) };
       const previousScore = answers[index] === undefined ? "unanswered" : answers[index] as QuestionnaireScore | null;
       const revision = answerEvents.filter((event) => event.questionId === item.id).length + 1;
       setAnswers((current) => current.map((value, i) => i === index ? score : value));
       setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
       setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
-    }, answerEvents, attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
-  [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, attempts]);
+    }, answerEvents, copyPromptAssignment,
+    prepareWritingPlan: () => setCopyPromptAssignment((current) => current ?? selectCopyPrompt(calculateQuestionnaireSummary(answers).symptomSumS)),
+    attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
+  [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, copyPromptAssignment, attempts]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;
 }
