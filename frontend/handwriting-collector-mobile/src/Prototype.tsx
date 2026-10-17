@@ -37,6 +37,7 @@ import {
   type QuestionnaireScore,
 } from "./questionnaire";
 import { selectCopyPrompt, type CopyPromptAssignment } from "./writingPrompts";
+import { assessWritingPattern, type WritingPatternKind } from "./writingQuality";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -53,11 +54,14 @@ type AttemptMetrics = {
   pauseCount: number; pathLengthPx: number; averageSpeedPxPerSecond: number; maximumSpeedPxPerSecond: number;
   meanSamplingIntervalMs: number; medianSamplingIntervalMs: number;
   pressure: { sampleCount: number; min: number; max: number; mean: number; standardDeviation: number; range: number };
+  strokeShape: { sampledStrokeCount: number; meanPathLengthPx: number; medianPathLengthPx: number; meanStraightness: number;
+    meanHorizontalDisplacementRatio: number; meanAbsoluteTurnRadiansPer100Px: number };
   coverage: { widthNorm: number; heightNorm: number }; outOfBoundsPointCount: number;
 };
 
-type QualityResult = { status: "usable" | "partial" | "invalid"; canSubmit: boolean; issues: string[] };
-type QualityMetrics = Pick<AttemptMetrics, "pointCount" | "movePointCount" | "strokeCount" | "durationMs" | "pathLengthPx" | "outOfBoundsPointCount">;
+type QualityResult = { status: "usable" | "partial" | "invalid"; canSubmit: boolean; issues: string[]; qcFlags: string[] };
+type QualityMetrics = Pick<AttemptMetrics, "pointCount" | "movePointCount" | "strokeCount" | "durationMs" | "pathLengthPx" | "outOfBoundsPointCount"> &
+  { strokeShape?: AttemptMetrics["strokeShape"] };
 
 type WritingTask = {
   id: string; version: string; title: string; prompt: string; hint: string;
@@ -138,6 +142,38 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
   const pressureVariance = pressures.length ? pressures.reduce((sum, value) => sum + (value - meanPressure) ** 2, 0) / pressures.length : 0;
   const xs = points.map((point) => clamp01(point.xNorm)); const ys = points.map((point) => clamp01(point.yNorm));
   const pressureMin = pressures.length ? Math.min(...pressures) : 0; const pressureMax = pressures.length ? Math.max(...pressures) : 0;
+  const strokeGroups = new Map<number, Point[]>();
+  points.forEach((point) => {
+    const stroke = strokeGroups.get(point.strokeId);
+    if (stroke) stroke.push(point);
+    else strokeGroups.set(point.strokeId, [point]);
+  });
+  const strokeShapes = [...strokeGroups.values()].flatMap((strokePoints) => {
+    let strokePath = 0; let absoluteTurn = 0; let previousAngle: number | null = null;
+    for (let index = 1; index < strokePoints.length; index += 1) {
+      const dx = strokePoints[index].x - strokePoints[index - 1].x;
+      const dy = strokePoints[index].y - strokePoints[index - 1].y;
+      const distance = Math.hypot(dx, dy);
+      strokePath += distance;
+      if (distance > 0) {
+        const angle = Math.atan2(dy, dx);
+        if (previousAngle !== null) {
+          const rawDifference = Math.abs(angle - previousAngle);
+          absoluteTurn += rawDifference > Math.PI ? Math.PI * 2 - rawDifference : rawDifference;
+        }
+        previousAngle = angle;
+      }
+    }
+    if (strokePath <= 0) return [];
+    const first = strokePoints[0]; const last = strokePoints.at(-1) as Point;
+    const displacement = Math.hypot(last.x - first.x, last.y - first.y);
+    return [{ path: strokePath, straightness: displacement / strokePath,
+      horizontalDisplacementRatio: Math.abs(last.x - first.x) / strokePath,
+      absoluteTurnRadiansPer100Px: absoluteTurn / strokePath * 100 }];
+  });
+  const sortedStrokePaths = strokeShapes.map((shape) => shape.path).sort((a, b) => a - b);
+  const shapeMean = (selector: (shape: (typeof strokeShapes)[number]) => number) => strokeShapes.length
+    ? strokeShapes.reduce((total, shape) => total + selector(shape), 0) / strokeShapes.length : 0;
   return {
     pointCount: points.length, movePointCount: points.filter((point) => point.phase === "move").length, strokeCount,
     durationMs: round(durationMs, 1), promptToFirstContactMs: round(promptToFirstContactMs, 1), activeDurationMs: round(activeDuration, 1),
@@ -147,22 +183,37 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
     medianSamplingIntervalMs: round(sortedIntervals.length ? sortedIntervals[Math.floor(sortedIntervals.length / 2)] : 0, 2),
     pressure: { sampleCount: pressures.length, min: round(pressureMin, 4), max: round(pressureMax, 4), mean: round(meanPressure, 4),
       standardDeviation: round(Math.sqrt(pressureVariance), 4), range: round(pressureMax - pressureMin, 4) },
+    strokeShape: { sampledStrokeCount: strokeShapes.length, meanPathLengthPx: round(shapeMean((shape) => shape.path), 1),
+      medianPathLengthPx: round(sortedStrokePaths.length ? sortedStrokePaths[Math.floor(sortedStrokePaths.length / 2)] : 0, 1),
+      meanStraightness: round(shapeMean((shape) => shape.straightness), 4),
+      meanHorizontalDisplacementRatio: round(shapeMean((shape) => shape.horizontalDisplacementRatio), 4),
+      meanAbsoluteTurnRadiansPer100Px: round(shapeMean((shape) => shape.absoluteTurnRadiansPer100Px), 2) },
     coverage: { widthNorm: round(xs.length ? Math.max(...xs) - Math.min(...xs) : 0, 4), heightNorm: round(ys.length ? Math.max(...ys) - Math.min(...ys) : 0, 4) },
     outOfBoundsPointCount: points.filter((point) => !point.insideCanvas).length,
   };
 }
 
-function assessQuality(task: WritingTask, metrics: QualityMetrics, pointerType: string, pressureDetected: boolean): QualityResult {
-  const issues: string[] = [];
-  if (pointerType !== "pen") issues.push("请使用数位笔书写，并确认驱动已开启 Windows Ink");
-  if (metrics.strokeCount < task.quality.minStrokes) issues.push(task.id === "PRESS_CHECK" ? "请完整画出三条横线" : "书写内容过少，请继续完成本页内容");
-  if (metrics.movePointCount < task.quality.minMoves || metrics.pathLengthPx < task.quality.minPathLength) issues.push("未检测到足够的连续书写轨迹");
-  if (metrics.durationMs < task.quality.minDurationMs) issues.push("书写时间过短，请按平时速度完成内容");
-  if (task.quality.requirePressure && !pressureDetected) issues.push("未检测到动态笔压，请检查数位板压感设置");
+function assessQuality(task: WritingTask, metrics: QualityMetrics, pointerType: string, pressureDetected: boolean, includePattern = true): QualityResult {
+  const issues: string[] = []; const qcFlags: string[] = [];
+  const addIssue = (flag: string, issue: string) => { qcFlags.push(flag); issues.push(issue); };
+  if (pointerType !== "pen") addIssue("non_pen_input", "请使用数位笔书写，并确认驱动已开启 Windows Ink");
+  if (metrics.strokeCount < task.quality.minStrokes) addIssue("insufficient_strokes", task.id === "PRESS_CHECK" ? "请完整画出三条横线" : "书写内容过少，请继续完成本页内容");
+  if (metrics.movePointCount < task.quality.minMoves || metrics.pathLengthPx < task.quality.minPathLength) addIssue("insufficient_continuous_trajectory", "未检测到足够的连续书写轨迹");
+  if (metrics.durationMs < task.quality.minDurationMs) addIssue("duration_too_short", "书写时间过短，请按平时速度完成内容");
+  if (task.quality.requirePressure && !pressureDetected) addIssue("dynamic_pressure_missing", "未检测到动态笔压，请检查数位板压感设置");
+  if (includePattern && metrics.strokeShape) {
+    const kind: WritingPatternKind = task.id === "PRESS_CHECK" ? "pressure_check" : task.copyPrompt ? "copy_sentence" : "free_writing";
+    const pattern = assessWritingPattern(kind, { strokeCount: metrics.strokeCount, durationMs: metrics.durationMs,
+      meanStrokePathLengthPx: metrics.strokeShape.meanPathLengthPx, meanStrokeStraightness: metrics.strokeShape.meanStraightness,
+      meanHorizontalDisplacementRatio: metrics.strokeShape.meanHorizontalDisplacementRatio,
+      meanAbsoluteTurnRadiansPer100Px: metrics.strokeShape.meanAbsoluteTurnRadiansPer100Px }, task.copyPrompt?.characterCount ?? null);
+    if (pattern.blocking) addIssue(pattern.qcFlags[0], kind === "pressure_check" ? "请画三条较平直的横线" : "轨迹更像连续涂画，请按题目书写完整文字");
+    pattern.qcFlags.slice(1).forEach((flag) => qcFlags.push(flag));
+  }
   const blockingIssues = issues.length;
   const boundaryWarning = metrics.pointCount > 0 && metrics.outOfBoundsPointCount / metrics.pointCount > 0.05;
-  if (boundaryWarning) issues.push("部分轨迹超出书写区域");
-  return { status: blockingIssues ? "invalid" : boundaryWarning ? "partial" : "usable", canSubmit: blockingIssues === 0, issues };
+  if (boundaryWarning) { issues.push("部分轨迹超出书写区域"); qcFlags.push("trajectory_out_of_bounds"); }
+  return { status: blockingIssues ? "invalid" : boundaryWarning ? "partial" : "usable", canSubmit: blockingIssues === 0, issues, qcFlags };
 }
 
 function makeAssessmentId() {
@@ -284,7 +335,7 @@ function Identity({ flow }: { flow: FlowControls }) {
       {identityError && <p className="identity-error" role="alert">{identityError}</p>}
       <button className="primary-button identity-confirm" disabled={!mode} onClick={confirmIdentity}>{mode === "initial" ? "生成采集编号" : "确认采集编号"}</button>
     </> : <>
-      <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong><small>编号已经锁定，本轮无法修改</small></div>
+      <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong></div>
       <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
       <button className="change-identity" onClick={() => { study.clearParticipant(); setIdentityError(""); }}>重新选择测试类型</button>
       <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解年龄、年级、省份、问卷和书写数据的采集用途，并同意用于研究分析与模型开发并保存在本机。</span></label>
@@ -307,7 +358,6 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
     <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / QUESTIONNAIRE_ITEMS.length) * 100}%` }} /></div>
     <h2>过去两周的状态</h2><p className="subcopy">请按过去 14 天（包括今天）出现的天数选择。</p>
     <section className="question-card single-question" key={question.id}>
-      <span className="question-domain">{question.domainLabel}</span>
       <p><b>{question.number}</b>{question.text}</p><div className="frequency-scale" role="radiogroup" aria-label={question.text}>
         {RESPONSE_OPTIONS.map((option) => <button key={option.score} className={study.answers[questionIndex] === option.score ? "selected" : ""} onClick={() => {
           const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
@@ -348,6 +398,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
   const outOfBoundsPointCount = useRef(0);
   const [pointCount, setPointCount] = useState(0);
   const [pointerType, setPointerType] = useState("");
+  const [submissionQuality, setSubmissionQuality] = useState<QualityResult | null>(null);
 
   useEffect(() => {
     const stopDrawing = () => { drawing.current = false; activePointerId.current = null; };
@@ -429,19 +480,20 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     points.current = []; strokeId.current = 0; startedAt.current = ""; firstEventTimestamp.current = 0; setPointCount(0);
     movePointCount.current = 0; pathLength.current = 0; outOfBoundsPointCount.current = 0;
     drawing.current = false; activePointerId.current = null; penSeen.current = false; observedPointerTypes.current = new Set();
-    pressureRange.current = { min: 1, max: 0 }; setPointerType("");
+    pressureRange.current = { min: 1, max: 0 }; setPointerType(""); setSubmissionQuality(null);
     const canvas = canvasRef.current; canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
   };
   const promptToFirstContactMs = points.current[0]?.taskElapsedMs ?? 0;
   const pressureDetected = penSeen.current && pressureRange.current.max - pressureRange.current.min >= 0.01;
   const liveQuality = assessQuality(task, { pointCount, movePointCount: movePointCount.current, strokeCount: strokeId.current,
-    durationMs: points.current.at(-1)?.elapsedMs ?? 0, pathLengthPx: pathLength.current, outOfBoundsPointCount: outOfBoundsPointCount.current }, pointerType, pressureDetected);
+    durationMs: points.current.at(-1)?.elapsedMs ?? 0, pathLengthPx: pathLength.current, outOfBoundsPointCount: outOfBoundsPointCount.current }, pointerType, pressureDetected, false);
   const finish = () => {
     const canvas = canvasRef.current;
     if (!canvas || !liveQuality.canSubmit) return;
     const rect = canvas.getBoundingClientRect();
     const metrics = calculateMetrics(points.current, promptToFirstContactMs, strokeId.current);
     const quality = assessQuality(task, metrics, pointerType, pressureDetected);
+    if (!quality.canSubmit) { setSubmissionQuality(quality); return; }
     onComplete({ taskId: task.id, taskVersion: task.version, taskTitle: task.title, prompt: task.prompt, copyPrompt: task.copyPrompt,
       promptShownAt: promptShownAt.current, startedAt: startedAt.current, endedAt: new Date().toISOString(),
       canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, points: points.current,
@@ -449,18 +501,19 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       input: { observedPointerTypes: [...observedPointerTypes.current], penDetected: penSeen.current, dynamicPressureDetected: pressureDetected },
       interruptions: interruptions.current, metrics, quality });
   };
+  const displayedQuality = submissionQuality ?? liveQuality;
   const inputLabel = pointerType === "pen" ? "数位笔模式" : pointerType ? "设备处于鼠标兼容模式，请开启 Windows Ink" : "接触画布后开始书写";
   return <><div className={`device-check ${pointerType === "pen" ? "pen-ready" : pointerType ? "compat-mode" : ""}`}>
     <strong>{inputLabel}</strong>
   </div>
   <div className="canvas-wrap" data-scroll-drag="ignore"><canvas ref={canvasRef} aria-label="书写区域" data-point-count={pointCount} data-drawing={drawing.current ? "true" : "false"}
-    onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); } record(event, "down"); }}
+    onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); setSubmissionQuality(null); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); } record(event, "down"); }}
     onPointerMove={(event) => { observeInput(event.nativeEvent); if (!drawing.current || activePointerId.current !== event.pointerId) return; if (!hasContact(event.nativeEvent)) { endStroke(event, false); return; } event.preventDefault(); record(event, "move"); }}
     onPointerUp={(event) => endStroke(event)}
     onPointerCancel={(event) => { interruptions.current.push({ type: "pointer-cancel", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); endStroke(event, false); }}
     onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; } }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
-    {pointCount > 0 && <p className={`quality-hint ${liveQuality.canSubmit ? "ready" : ""}`}>{liveQuality.canSubmit ? "本页书写质量已达到提交要求" : liveQuality.issues[0]}</p>}
+    {pointCount > 0 && <p className={`quality-hint ${displayedQuality.canSubmit ? "ready" : ""}`}>{displayedQuality.canSubmit ? "本页书写质量已达到提交要求" : displayedQuality.issues[0]}</p>}
     <div className="writing-actions" data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button><button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
 }
 
@@ -469,7 +522,7 @@ function Collection({ flow }: { flow: FlowControls }) {
   const keyboard = useKeyboard();
   useResetScroll();
   useEffect(() => { keyboard.hide(); }, []);
-  const fallbackAssignment = useMemo(() => selectCopyPrompt(calculateQuestionnaireSummary(study.answers).symptomSumS), [study.answers]);
+  const fallbackAssignment = useMemo(() => selectCopyPrompt(), []);
   const assignment = study.copyPromptAssignment ?? fallbackAssignment;
   const tasks = useMemo(() => createWritingTasks(assignment), [assignment]);
   const index = study.attempts.length;
@@ -532,7 +585,7 @@ function Review() {
     const datasetEligibility = isAdministratorTest ? "excluded_test_record"
       : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
         : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
-    const payload = { schemaVersion: "1.5.0", appVersion: "handwriting-collector-mobile/1.5.0",
+    const payload = { schemaVersion: "1.6.0", appVersion: "handwriting-collector-mobile/1.6.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
@@ -560,7 +613,7 @@ function Review() {
           responseTiming: summary.responseTiming },
         quality: questionnaireQuality, linkedSessionIds: [sessionId] },
       writingPlan: { copyPromptAssignment: study.copyPromptAssignment, copyRepeatsRequired: 2,
-        scoreBandPurpose: "sampling_stratification_not_clinical_diagnosis" },
+        promptSelectionIndependentOfQuestionnaire: true, selectionScope: "universal_positive_pool" },
       attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
         attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
       qualitySummary: { status: allWritingUsable ? "usable" : "partial",
@@ -584,8 +637,7 @@ function Review() {
     }
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
-    <div className="success-mark">✓</div><h2>本轮采集完成</h2><p className="subcopy">请保存到本机并导出数据文件，随后可交给研究人员统一整理。</p>
-    <div className="data-note"><strong>采集内容已隐藏</strong><p>采集细节仅在导出文件中完整保留，当前界面不展示任何具体数值。</p></div>
+    <div className="success-mark">✓</div><h2>本轮采集完成</h2>
     <button className="primary-button" disabled={busy} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
     {saveError && <p className="save-error" role="alert">{saveError}</p>}
@@ -629,7 +681,7 @@ export default function Prototype() {
       setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
       setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
     }, answerEvents, copyPromptAssignment,
-    prepareWritingPlan: () => setCopyPromptAssignment((current) => current ?? selectCopyPrompt(calculateQuestionnaireSummary(answers).symptomSumS)),
+    prepareWritingPlan: () => setCopyPromptAssignment((current) => current ?? selectCopyPrompt()),
     attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
   [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, copyPromptAssignment, attempts]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;

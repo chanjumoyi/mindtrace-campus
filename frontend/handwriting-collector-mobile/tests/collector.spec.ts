@@ -14,12 +14,15 @@ test("initial collection creates the requested ID and keeps pen-safe writing act
 
   await expect(currentScreen).toContainText(/MT-24-[A-HJ-NP-Z2-9]{4}/);
   await expect(currentScreen).toContainText("第 1 次");
+  await expect(currentScreen).not.toContainText("编号已经锁定，本轮无法修改");
   const participantId = await currentScreen.locator(".identity-card strong").innerText();
   const storedProfile = await page.evaluate((id) => localStorage.getItem(`mindtrace.participant-profile.v2.${id}`), participantId);
   expect(JSON.parse(storedProfile ?? "{}")).toMatchObject({ ageYears: 20, grade: "24", provinceCode: "440000", provinceLabel: "广东省" });
 
   await currentScreen.getByRole("checkbox").check();
   await currentScreen.getByRole("button", { name: "继续" }).click();
+
+  await expect(currentScreen).not.toContainText("心境与兴趣");
 
   for (let itemIndex = 0; itemIndex < 18; itemIndex += 1) {
     await currentScreen.getByRole("radio", { name: "从未 0 天" }).click();
