@@ -35,6 +35,27 @@ test("initial collection creates the requested ID and keeps pen-safe writing act
   await expect(currentScreen.getByRole("button", { name: "确认本页书写" })).toHaveAttribute("type", "button");
 });
 
+test("skipping a question records prefer-not-to-answer and advances", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始采集" }).click();
+  const currentScreen = page.locator('.flow-screen[data-flow-current="true"]');
+  await currentScreen.getByRole("button", { name: "初次测试" }).click();
+  await currentScreen.getByRole("spinbutton", { name: "年龄" }).fill("20");
+  await currentScreen.getByLabel("年级").selectOption("24");
+  await currentScreen.getByLabel("来自省份").selectOption("440000");
+  await currentScreen.getByRole("button", { name: "生成采集编号" }).click();
+  await currentScreen.getByRole("checkbox").check();
+  await currentScreen.getByRole("button", { name: "继续" }).click();
+
+  await expect(currentScreen).toContainText("1/18");
+  await currentScreen.getByRole("button", { name: /跳过此题/ }).click();
+  await expect(currentScreen).toContainText("2/18");
+
+  await currentScreen.getByRole("button", { name: "上一题" }).click();
+  await expect(currentScreen).toContainText("1/18");
+  await expect(currentScreen.getByRole("button", { name: "已选择暂不回答" })).toBeVisible();
+});
+
 test("follow-up collection accepts the fixed administrator test ID", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "开始采集" }).click();

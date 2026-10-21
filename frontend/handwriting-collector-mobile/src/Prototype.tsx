@@ -39,6 +39,8 @@ import {
 import { selectCopyPrompt, type CopyPromptAssignment } from "./writingPrompts";
 import { assessWritingPattern, type WritingPatternKind } from "./writingQuality";
 import { exportJsonPackage } from "./nativeExport";
+import { uploadSession } from "./upload";
+import { configureNativeShell } from "./nativeShell";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -60,7 +62,7 @@ type AttemptMetrics = {
   coverage: { widthNorm: number; heightNorm: number }; outOfBoundsPointCount: number;
 };
 
-type QualityResult = { status: "usable" | "partial" | "invalid"; canSubmit: boolean; issues: string[]; qcFlags: string[] };
+type QualityResult = { status: "usable" | "partial" | "invalid"; canSubmit: boolean; issues: string[]; warnings: string[]; qcFlags: string[] };
 type QualityMetrics = Pick<AttemptMetrics, "pointCount" | "movePointCount" | "strokeCount" | "durationMs" | "pathLengthPx" | "outOfBoundsPointCount"> &
   { strokeShape?: AttemptMetrics["strokeShape"] };
 
@@ -195,13 +197,24 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
 }
 
 function assessQuality(task: WritingTask, metrics: QualityMetrics, pointerType: string, pressureDetected: boolean, includePattern = true): QualityResult {
-  const issues: string[] = []; const qcFlags: string[] = [];
-  const addIssue = (flag: string, issue: string) => { qcFlags.push(flag); issues.push(issue); };
-  if (pointerType !== "pen") addIssue("non_pen_input", "请使用数位笔书写，并确认驱动已开启 Windows Ink");
+  const issues: string[] = []; const warnings: string[] = []; const qcFlags: string[] = [];
+  const addIssue = (flag: string, issue: string, blocking = true) => {
+    qcFlags.push(flag);
+    if (blocking) issues.push(issue); else warnings.push(issue);
+  };
+  if (pointerType && pointerType !== "pen") {
+    addIssue("non_pen_input", pointerType === "touch"
+      ? "当前为触摸输入，未检测到压感笔；本次将按无压感输入记录"
+      : "当前为鼠标或兼容模式输入；本次将按无压感输入记录", false);
+  }
   if (metrics.strokeCount < task.quality.minStrokes) addIssue("insufficient_strokes", task.id === "PRESS_CHECK" ? "请完整画出三条横线" : "书写内容过少，请继续完成本页内容");
   if (metrics.movePointCount < task.quality.minMoves || metrics.pathLengthPx < task.quality.minPathLength) addIssue("insufficient_continuous_trajectory", "未检测到足够的连续书写轨迹");
   if (metrics.durationMs < task.quality.minDurationMs) addIssue("duration_too_short", "书写时间过短，请按平时速度完成内容");
-  if (task.quality.requirePressure && !pressureDetected) addIssue("dynamic_pressure_missing", "未检测到动态笔压，请检查数位板压感设置");
+  if (task.quality.requirePressure && !pressureDetected) {
+    addIssue("dynamic_pressure_missing", pointerType === "pen"
+      ? "未检测到动态笔压，请检查设备压感设置；本次仍可提交"
+      : "当前设备不提供动态笔压，本次将按无压感样本记录", false);
+  }
   if (includePattern && metrics.strokeShape) {
     const kind: WritingPatternKind = task.id === "PRESS_CHECK" ? "pressure_check" : task.copyPrompt ? "copy_sentence" : "free_writing";
     const pattern = assessWritingPattern(kind, { strokeCount: metrics.strokeCount, durationMs: metrics.durationMs,
@@ -213,8 +226,9 @@ function assessQuality(task: WritingTask, metrics: QualityMetrics, pointerType: 
   }
   const blockingIssues = issues.length;
   const boundaryWarning = metrics.pointCount > 0 && metrics.outOfBoundsPointCount / metrics.pointCount > 0.05;
-  if (boundaryWarning) { issues.push("部分轨迹超出书写区域"); qcFlags.push("trajectory_out_of_bounds"); }
-  return { status: blockingIssues ? "invalid" : boundaryWarning ? "partial" : "usable", canSubmit: blockingIssues === 0, issues, qcFlags };
+  if (boundaryWarning) { warnings.push("部分轨迹超出书写区域"); qcFlags.push("trajectory_out_of_bounds"); }
+  const status = blockingIssues ? "invalid" : (boundaryWarning || warnings.length > 0) ? "partial" : "usable";
+  return { status, canSubmit: blockingIssues === 0, issues, warnings, qcFlags };
 }
 
 function makeAssessmentId() {
@@ -354,6 +368,16 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
   const resolved = study.answers.filter((value) => value !== undefined).length;
   const question = QUESTIONNAIRE_ITEMS[questionIndex];
   const isLastQuestion = questionIndex === QUESTIONNAIRE_ITEMS.length - 1;
+  const skipToNext = () => {
+    const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
+    study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
+    const allResolvedAfter = study.answers.every((value, index) => index === questionIndex || value !== undefined);
+    if (isLastQuestion) {
+      if (allResolvedAfter) { study.prepareWritingPlan(); flow.push(collectionScreen); }
+      return;
+    }
+    setQuestionIndex((current) => current + 1);
+  };
   return <MobileScroll className="app-screen"><main className="screen-body questionnaire">
     <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{QUESTIONNAIRE_ITEMS.length}</strong></div>
     <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / QUESTIONNAIRE_ITEMS.length) * 100}%` }} /></div>
@@ -365,10 +389,13 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
           study.setAnswer(questionIndex, option.score, shown.iso, performance.now() - shown.performanceMs);
         }} aria-checked={study.answers[questionIndex] === option.score} role="radio"><strong>{option.label}</strong><small>{option.days}</small></button>)}
       </div>
-      <button className={`skip-answer ${study.answers[questionIndex] === null ? "selected" : ""}`} onClick={() => {
-        const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
-        study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
-      }}>{study.answers[questionIndex] === null ? "已选择暂不回答" : "暂不回答此题"}</button>
+      <div className="skip-answer-row">
+        <button type="button" className={`skip-answer ${study.answers[questionIndex] === null ? "selected" : ""}`} onClick={() => {
+          const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
+          study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
+        }}>{study.answers[questionIndex] === null ? "已选择暂不回答" : "暂不回答此题"}</button>
+        <button type="button" className="skip-answer skip-answer-next" onClick={skipToNext}>跳过此题 →</button>
+      </div>
     </section>
     <div className={`question-nav ${questionIndex === 0 ? "single-action" : ""}`}>
       {questionIndex > 0 && <button className="secondary-button" onClick={() => setQuestionIndex((current) => current - 1)}>上一题</button>}
@@ -503,9 +530,16 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       interruptions: interruptions.current, metrics, quality });
   };
   const displayedQuality = submissionQuality ?? liveQuality;
-  const inputLabel = pointerType === "pen" ? "数位笔模式" : pointerType ? "设备处于鼠标兼容模式，请开启 Windows Ink" : "接触画布后开始书写";
+  const inputLabel = pointerType === "pen" ? "数位笔模式" : pointerType === "touch" ? "触摸输入模式（无压感）"
+    : pointerType === "mouse" ? "鼠标/兼容模式输入" : "接触画布后开始书写";
+  const inputHint = pointerType === "touch" ? "未检测到压感笔，本次将记录为无压感样本，仍可提交"
+    : pointerType === "mouse" ? "当前为鼠标或兼容模式输入，本次将记录为无压感样本，仍可提交" : "";
+  const hintText = displayedQuality.canSubmit
+    ? (displayedQuality.warnings[0] ?? "本页书写质量已达到提交要求")
+    : displayedQuality.issues[0];
   return <><div className={`device-check ${pointerType === "pen" ? "pen-ready" : pointerType ? "compat-mode" : ""}`}>
     <strong>{inputLabel}</strong>
+    {inputHint && <small>{inputHint}</small>}
   </div>
   <div className="canvas-wrap" data-scroll-drag="ignore"><canvas ref={canvasRef} aria-label="书写区域" data-point-count={pointCount} data-drawing={drawing.current ? "true" : "false"}
     onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); setSubmissionQuality(null); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); } record(event, "down"); }}
@@ -514,7 +548,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     onPointerCancel={(event) => { interruptions.current.push({ type: "pointer-cancel", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); endStroke(event, false); }}
     onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; } }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
-    {pointCount > 0 && <p className={`quality-hint ${displayedQuality.canSubmit ? "ready" : ""}`}>{displayedQuality.canSubmit ? "本页书写质量已达到提交要求" : displayedQuality.issues[0]}</p>}
+    {pointCount > 0 && <p className={`quality-hint ${displayedQuality.canSubmit && displayedQuality.warnings.length === 0 ? "ready" : ""}`}>{hintText}</p>}
     <div className="writing-actions" data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button><button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
 }
 
@@ -570,6 +604,26 @@ function Review() {
   const study = useStudy();
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "failed" | "skipped">("idle");
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [lastExport, setLastExport] = useState<{ filename: string; json: string; sessionId: string } | null>(null);
+  const [uploadedSession, setUploadedSession] = useState<string | null>(null);
+  const runUpload = async (filename: string, json: string, sessionId: string) => {
+    setUploadState("uploading"); setUploadMessage("");
+    const result = await uploadSession(filename, json);
+    if (result.ok) {
+      setUploadState("success");
+      setUploadMessage(result.storedAs ?? "");
+      setUploadedSession(sessionId);
+    } else {
+      setUploadState("failed");
+      setUploadMessage(result.message);
+    }
+  };
+  const retryUpload = () => {
+    if (!lastExport) return;
+    void runUpload(lastExport.filename, lastExport.json, lastExport.sessionId);
+  };
   const save = async () => {
     setBusy(true); setSaveError("");
     const exportedAt = new Date().toISOString();
@@ -624,11 +678,20 @@ function Review() {
         partialAttempts: study.attempts.filter((attempt) => attempt.quality.status === "partial").length,
         invalidAttempts: study.attempts.filter((attempt) => attempt.quality.status === "invalid").length },
       device: collectDeviceContext() };
+    const filename = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
+    const json = JSON.stringify(payload, null, 2);
     try {
       await storePackage(payload);
       markTestCompleted(study.participantId, study.testNumber);
-      const filename = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
-      await exportJsonPackage(filename, JSON.stringify(payload, null, 2));
+      setLastExport({ filename, json, sessionId });
+      if (isAdministratorTest) {
+        setUploadState("skipped"); setUploadMessage("");
+      } else if (uploadedSession !== sessionId) {
+        void runUpload(filename, json, sessionId);
+      } else {
+        setUploadState("success"); setUploadMessage("");
+      }
+      await exportJsonPackage(filename, json);
       setSaved(true);
     } catch {
       setSaveError("保存失败，请检查浏览器存储权限后重试。");
@@ -638,8 +701,12 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2>
-    <button className="primary-button" disabled={busy} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
+    <button className="primary-button" disabled={busy || uploadState === "uploading"} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
+    {uploadState === "uploading" && <p className="upload-note">正在上传到服务器…</p>}
+    {uploadState === "success" && <p className="upload-note upload-success">已上传到服务器，可用于数据集训练。{uploadMessage && <small>服务器文件：{uploadMessage}</small>}</p>}
+    {uploadState === "failed" && <><p className="upload-note upload-error" role="alert">服务器连接失败，数据已保存在本机。{uploadMessage && <small>原因：{uploadMessage}</small>}</p><button className="secondary-button" type="button" onClick={retryUpload}>重试上传</button></>}
+    {uploadState === "skipped" && <p className="upload-note">管理员测试记录仅保存在本机，不上传数据集。</p>}
     {saveError && <p className="save-error" role="alert">{saveError}</p>}
   </main></MobileScroll>;
 }
@@ -651,6 +718,7 @@ const reviewScreen = screen("review", "完成采集", () => <Review />);
 const welcomeScreen: FlowScreen = { id: "welcome", render: (flow) => <Welcome flow={flow} /> };
 
 export default function Prototype() {
+  useEffect(() => { configureNativeShell(); }, []);
   const [participantProfile, setParticipantProfile] = useState<ParticipantProfile | null>(null);
   const participantId = participantProfile?.participantId ?? "";
   const [testNumber, setTestNumber] = useState(0);
