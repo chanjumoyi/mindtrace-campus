@@ -54,3 +54,10 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 16px; font-family: "STKaiti", "
 .upload-note { margin: 12px 0 0; color: #557067; font-size: 12px; font-weight: 700; }.upload-note small { display: block; margin-top: 4px; color: #8c9692; font-size: 11px; font-weight: 500; word-break: break-all; }.upload-success { color: #2f6b52; }.upload-error { color: #9a4f43; }.review-screen .secondary-button { margin-top: 12px; }
 @media (max-height: 720px) { .welcome-content { padding-top: calc(var(--mobile-safe-area-height) + 30px); }.writing-screen .screen-body { padding-top: 10px; }.prompt { font-size: 19px; }.canvas-wrap { min-height: 190px; }.questionnaire { padding-top: 16px; }.questionnaire h2 { font-size: 21px; }.single-question { margin-top: 8px; padding-top: 11px; }.single-question p { min-height: 44px; margin: 4px 0 7px; font-size: 14px; }.frequency-scale { gap: 4px; }.frequency-scale button { min-height: 34px; }.skip-answer { min-height: 26px; } }
 @media (min-width: 430px) { .screen-body { padding-left: 28px; padding-right: 28px; } }
+
+.assessment-result { text-align: left; margin: 20px 0; padding: 18px; border: 1px solid #ccd4d1; border-radius: 16px; background: #f6f9f7; }
+.assessment-result h3 { margin: 0 0 12px; font-size: 19px; }
+.assessment-result p { line-height: 1.65; }
+.assessment-score { font-size: 26px; font-weight: 700; color: #314b43; }
+.assessment-score small { display: block; font-size: 13px; font-weight: 400; }
+.assessment-result a { color: #314b43; text-decoration: underline; }

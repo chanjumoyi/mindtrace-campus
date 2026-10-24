@@ -26,6 +26,7 @@ import {
 } from "./identity";
 import {
   QUESTIONNAIRE_ID,
+  QUESTIONNAIRE_SOURCE,
   QUESTIONNAIRE_ITEMS,
   QUESTIONNAIRE_ITEM_SET_HASH,
   QUESTIONNAIRE_VERSION,
@@ -381,7 +382,7 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
   return <MobileScroll className="app-screen"><main className="screen-body questionnaire">
     <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{QUESTIONNAIRE_ITEMS.length}</strong></div>
     <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / QUESTIONNAIRE_ITEMS.length) * 100}%` }} /></div>
-    <h2>过去两周的状态</h2><p className="subcopy">请按过去 14 天（包括今天）出现的天数选择。</p>
+    <h2>WHO-5 身心健康指标</h2><p className="subcopy">请选择过去两周最接近您感觉状态的选项。共 5 题，分数越高表示心理幸福感越好。</p>
     <section className="question-card single-question" key={question.id}>
       <p><b>{question.number}</b>{question.text}</p><div className="frequency-scale" role="radiogroup" aria-label={question.text}>
         {RESPONSE_OPTIONS.map((option) => <button key={option.score} className={study.answers[questionIndex] === option.score ? "selected" : ""} onClick={() => {
@@ -602,6 +603,7 @@ function collectDeviceContext() {
 
 function Review() {
   const study = useStudy();
+  const assessment = calculateQuestionnaireSummary(study.answers, study.consent);
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "failed" | "skipped">("idle");
@@ -640,7 +642,7 @@ function Review() {
     const datasetEligibility = isAdministratorTest ? "excluded_test_record"
       : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
         : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
-    const payload = { schemaVersion: "1.6.0", appVersion: "handwriting-collector-mobile/1.6.0",
+    const payload = { schemaVersion: "1.7.0", appVersion: "handwriting-collector-mobile/1.7.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
@@ -652,19 +654,21 @@ function Review() {
         version: "local-anonymous-collection-v1.2", dataUseScope: ["demographics", "research", "model_development"] },
       questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
         instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
-        responseSchemaVersion: "questionnaire-response/1.2.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
+        source: QUESTIONNAIRE_SOURCE, responseSchemaVersion: "questionnaire-response/2.0.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
         recallPeriod: { days: 14, includesToday: true, startDate: formatLocalDate(recallStart), endDate: formatLocalDate(recallEnd),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         startedAt: study.answerRecords.find(Boolean)?.shownAt ?? study.sessionStartedAt,
         submittedAt: answeredTimes.sort().at(-1) ?? exportedAt,
         responseScale: RESPONSE_OPTIONS,
-        scoring: { higherDerivedScoreMeaning: "more_reported_difficulty", rawScoreMeaning: "selected_frequency_option_0_to_4",
-          reverseScoredItemIds: QUESTIONNAIRE_ITEMS.filter((item) => item.scoringDirection === "reverse").map((item) => item.id) },
+        scoring: { higherDerivedScoreMeaning: "better_mental_wellbeing", rawScoreMeaning: "selected_frequency_option_0_to_5",
+          rawTotalRange: [0, 25], percentageScoreRange: [0, 100], percentageMultiplier: 4,
+          furtherAssessmentRule: "rawTotal < 13 OR any item <= 1", reverseScoredItemIds: [] },
         items: study.answerRecords, responseEvents: study.answerEvents,
         derived: { completionStatus: summary.completionStatus, answeredCount: summary.answeredCount,
-          missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, scoredItemValues: summary.scoredItemValues, symptomSumS: summary.symptomSumS,
-          breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
-          resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion,
+          missingItemIds: summary.missingItemIds, unansweredItemIds: summary.unansweredItemIds, scoredItemValues: summary.scoredItemValues,
+          rawTotal: summary.rawTotal, percentageScore: summary.percentageScore,
+          belowCutoff: summary.belowCutoff, lowItemIds: summary.lowItemIds, needsFurtherAssessment: summary.needsFurtherAssessment,
+          resultTitle: summary.resultTitle, recommendation: summary.recommendation, scoreRuleVersion: summary.scoreRuleVersion,
           responseTiming: summary.responseTiming },
         quality: questionnaireQuality, linkedSessionIds: [sessionId] },
       writingPlan: { copyPromptAssignment: study.copyPromptAssignment, copyRepeatsRequired: 2,
@@ -701,6 +705,14 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2>
+    <section className="assessment-result" aria-label="WHO-5 状态评定">
+      <h3>{assessment.resultTitle ?? "量表未完整作答，暂不评定"}</h3>
+      {assessment.rawTotal !== null && <p className="assessment-score">{assessment.percentageScore} / 100 <small>原始分 {assessment.rawTotal} / 25</small></p>}
+      <p>{assessment.recommendation}</p>
+      <p className="subcopy">评估过去两周的心理幸福感，不代表即时情绪或疾病诊断。完整作答时，原始分低于 13 或任一题为 0～1 分提示进一步评估；未触发提示也不排除心理困扰。</p>
+      <a href={QUESTIONNAIRE_SOURCE} target="_blank" rel="noreferrer">量表来源与计分：WHO-5</a>
+      <p className="subcopy">© WHO 2024 · CC BY-NC-SA 3.0 IGO。采用 WHO 提供的中文版本；本应用未获 WHO 背书。</p>
+    </section>
     <button className="primary-button" disabled={busy || uploadState === "uploading"} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
     {uploadState === "uploading" && <p className="upload-note">正在上传到服务器…</p>}
