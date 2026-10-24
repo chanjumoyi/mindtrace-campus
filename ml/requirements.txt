@@ -1,0 +1,11 @@
+# Python 3.10 独立训练环境的初始依赖清单；尚未验证或锁定训练环境。
+# torch 请根据 CPU/CUDA 环境单独安装；完成验证后记录实际版本。
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+pyyaml
+tqdm
+tensorboard
+pytest

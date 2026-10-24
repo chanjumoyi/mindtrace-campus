@@ -123,7 +123,8 @@ API 和 Worker 必须使用相同镜像、代码版本、Schema 和配置格式�
 mindtrace-campus/
 ├─ frontend/                   # Vue Web 应用
 ├─ backend/                    # FastAPI 线上服务
-├─ research/                   # 离线研究资产和未来数据适配器
+├─ ml/                         # 独立机器学习代码、数据配置与本地实验输出
+├─ research/                   # Prompt、工作流、知识库和合成研究资产
 ├─ tests/                      # 当前跨模块回归测试
 ├─ docs/                       # 项目唯一正式文档区
 ├─ docker-compose.yml
@@ -133,7 +134,7 @@ mindtrace-campus/
 └─ README.md                   # 项目入口和快速启动
 ```
 
-根目录不得新增临时说明、会议记录、数据文件、模型、数据库或一次性脚本。文档放入 `docs/` 对应主题；研究脚本放入 `research/`；运维脚本未来统一放入 `scripts/`。
+根目录不得新增临时说明、会议记录、数据文件、模型、数据库或一次性脚本。文档放入 `docs/` 对应主题；机器学习脚本放入 `ml/scripts/`，其他研究资产放入 `research/`；运维脚本未来统一放入 `scripts/`。
 
 ### 6.1 文档目录
 
@@ -363,24 +364,23 @@ features/handwriting/
 
 ## 10. 离线数据与研究代码
 
-`research/` 不被线上 API 导入。新的数据工具按统一适配器架构建立：
+`ml/` 为独立训练区，不被线上 API 导入。按训练方案第 4.1 节建立，详见 [ml/README.md](../../ml/README.md)。当前只有目录和待实现入口，以下接口为后续实现目标。`research/ai/` 与 `research/data/` 保留现有非训练资产；后端线上特征实现保留原模块与接口。
 
 ```text
-research/
-├─ datasets/
-│  ├─ adapters/
-│  │  ├─ base.py
-│  │  ├─ quickdraw.py
-│  │  ├─ casia_ondo.py
-│  │  └─ emothaw.py
-│  ├─ schemas/
-│  ├─ validation/
-│  └─ registry/
-├─ features/
-├─ experiments/
-├─ evaluations/
-├─ ai/
-└─ artifacts/                 # Git忽略
+ml/
+├─ configs/                   # data、pretrain、emothaw、mindtrace
+├─ data/raw/                  # casia_ondo、emothaw、mindtrace；Git 忽略
+├─ data/processed/            # Git 忽略
+├─ data/splits/               # Git 忽略
+├─ src/datasets/
+├─ src/preprocessing/
+├─ src/models/
+├─ src/training/
+├─ src/evaluation/
+├─ scripts/                   # 01—07 阶段入口，待实现
+├─ checkpoints/               # Git 忽略
+├─ experiments/               # Git 忽略
+└─ reports/                   # Git 忽略
 ```
 
 每个公开数据集有独立适配器，但输出统一中间 Schema：

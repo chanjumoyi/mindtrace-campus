@@ -1,0 +1,9 @@
+# 路径相对 ml/；仅为目录配置，尚无数据处理实现。
+status: scaffold
+paths:
+  casia_ondo: data/raw/casia_ondo
+  emothaw: data/raw/emothaw
+  mindtrace: data/raw/mindtrace
+  processed: data/processed
+  splits: data/splits
+trajectory_channels: [dx, dy, dt, pressure, pen_state]

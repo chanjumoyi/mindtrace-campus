@@ -51,7 +51,7 @@ npm ci
 npm run dev
 ```
 
-必须使用 Python 3.12 创建虚拟环境：固定的 `pydantic==2.11.x` 在 3.13/3.14 上没有预编译包，安装会在 `pydantic-core` 处失败。研究数据适配器将在统一轨迹 Schema 2.0 冻结后单独声明依赖，不复用后端运行时环境。
+后端必须使用 Python 3.12 创建虚拟环境：固定的 `pydantic==2.11.x` 在 3.13/3.14 上没有预编译包，安装会在 `pydantic-core` 处失败。离线训练依赖在 `ml/requirements.txt` 单独维护，不复用后端运行时环境。
 
 ## 目录
 
@@ -59,7 +59,8 @@ npm run dev
 mindtrace-campus/
 ├─ frontend/                 # Vue 3 Web 应用与沙盘/笔迹交互资源
 ├─ backend/                  # FastAPI、MySQL 数据模型、AI 与笔迹服务
-├─ research/                 # 离线研究资产、数据适配器和实验（不被线上服务导入）
+├─ ml/                       # 独立离线训练、预处理、模型和评估
+├─ research/                 # Prompt、工作流、知识库、沙盘字典和合成样例
 ├─ docs/                     # 产品、架构、数据、API、开发和协作文档
 ├─ tests/                    # 后端、算法和前端纯逻辑测试
 ├─ docker-compose.yml        # MySQL + FastAPI + Vue/Nginx
@@ -70,4 +71,6 @@ mindtrace-campus/
 
 ## 研究数据
 
-真实对话、笔迹、量表、身份信息和参与者数据不得提交到 Git。所有本地敏感数据和下载的数据集必须放在仓库之外的受控目录，或放入明确被 Git 忽略的 `research/private/`。仓库内示例必须是合成数据。
+真实对话、笔迹、量表、身份信息和参与者数据不得提交到 Git。所有本地敏感数据和下载的数据集必须放在仓库之外的受控目录，或放入明确被 Git 忽略的 `ml/data/`（训练数据）、`research/private/`（其他私密研究材料）。模型及实验输出放入 `ml/checkpoints/`、`ml/experiments/`、`ml/reports/`，均不提交 Git。仓库内示例必须是合成数据。
+
+离线训练目录与当前实现状态见 [ml/README.md](ml/README.md)。训练环境使用独立 Python 3.10；本次只建立目录、初始依赖清单和待实现入口。

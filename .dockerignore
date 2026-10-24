@@ -23,3 +23,7 @@ research/datasets/normalized
 datasets
 tmp
 temp
+
+# Training assets must not enter application images
+ml
+database

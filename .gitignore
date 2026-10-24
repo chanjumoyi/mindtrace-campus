@@ -21,7 +21,7 @@ research/private/
 research/artifacts/
 research/datasets/raw/
 research/datasets/normalized/
-datasets/
+/datasets/
 
 # Local databases, logs and temporary files
 *.db
@@ -42,3 +42,17 @@ desktop.ini
 /心迹ai——大学生心理健康智能交互平台立项报告.pdf
 docs/心迹ai——大学生心理健康智能交互平台立项报告*.docx
 docs/心迹ai——大学生心理健康智能交互平台立项报告*.pdf
+
+# Offline ML data and generated artifacts
+/database/
+/ml/data/**
+!/ml/data/**/
+!/ml/data/**/.gitkeep
+/ml/checkpoints/**
+!/ml/checkpoints/.gitkeep
+/ml/experiments/**
+!/ml/experiments/.gitkeep
+/ml/reports/**
+!/ml/reports/.gitkeep
+*.pt
+*.pth

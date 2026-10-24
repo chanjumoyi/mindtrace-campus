@@ -1,0 +1,4 @@
+# 待实现阶段的配置占位，不表示可启动训练。
+status: not_implemented
+stage: mindtrace
+seed: 42
