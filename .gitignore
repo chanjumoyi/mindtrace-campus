@@ -23,6 +23,18 @@ research/datasets/raw/
 research/datasets/normalized/
 datasets/
 
+# ML training workspace: datasets, weights, runs and environments stay local
+ml/.venv/
+ml/data/
+ml/checkpoints/
+ml/experiments/
+ml/runs/
+ml/reports/
+ml/**/*.pt
+ml/**/*.pth
+ml/**/*.ckpt
+ml/**/*.safetensors
+
 # Local databases, logs and temporary files
 *.db
 *.sqlite3
