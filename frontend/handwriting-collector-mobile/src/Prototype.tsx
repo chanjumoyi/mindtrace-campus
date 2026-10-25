@@ -26,6 +26,7 @@ import {
 } from "./identity";
 import {
   QUESTIONNAIRE_ID,
+  QUESTIONNAIRE_SOURCE,
   QUESTIONNAIRE_ITEMS,
   QUESTIONNAIRE_ITEM_SET_HASH,
   QUESTIONNAIRE_VERSION,
@@ -87,7 +88,7 @@ type AnswerRecord = {
   questionId: string; itemNumber: number; domain: string; domainLabel: string; question: string;
   score: QuestionnaireScore | null; rawScore: QuestionnaireScore | null; scoredScore: QuestionnaireScore | null;
   scoringDirection: "direct" | "reverse"; responseLabel: string | null; dayRange: string | null;
-  missingReason: "prefer_not_to_answer" | null; shownAt: string; answeredAt: string; responseTimeMs: number;
+  missingReason: null; shownAt: string; answeredAt: string; responseTimeMs: number;
 };
 type AnswerEvent = AnswerRecord & { revision: number; previousScore: QuestionnaireScore | null | "unanswered" };
 
@@ -98,7 +99,7 @@ type StudyState = {
   setParticipant: (profile: ParticipantProfile) => void; clearParticipant: () => void;
   setConsent: (value: boolean) => void;
   answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
-  setAnswer: (index: number, value: QuestionnaireScore | null, shownAt: string, responseTimeMs: number) => void;
+  setAnswer: (index: number, value: QuestionnaireScore, shownAt: string, responseTimeMs: number) => void;
   copyPromptAssignment: CopyPromptAssignment | null; prepareWritingPlan: () => void;
   attempts: Attempt[]; addAttempt: (attempt: Attempt) => void;
 };
@@ -365,23 +366,13 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
   const [questionIndex, setQuestionIndex] = useState(0);
   const questionShown = useRef({ index: 0, iso: new Date().toISOString(), performanceMs: performance.now() });
   useEffect(() => { questionShown.current = { index: questionIndex, iso: new Date().toISOString(), performanceMs: performance.now() }; }, [questionIndex]);
-  const resolved = study.answers.filter((value) => value !== undefined).length;
+  const resolved = study.answers.filter((value) => typeof value === "number").length;
   const question = QUESTIONNAIRE_ITEMS[questionIndex];
   const isLastQuestion = questionIndex === QUESTIONNAIRE_ITEMS.length - 1;
-  const skipToNext = () => {
-    const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
-    study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
-    const allResolvedAfter = study.answers.every((value, index) => index === questionIndex || value !== undefined);
-    if (isLastQuestion) {
-      if (allResolvedAfter) { study.prepareWritingPlan(); flow.push(collectionScreen); }
-      return;
-    }
-    setQuestionIndex((current) => current + 1);
-  };
   return <MobileScroll className="app-screen"><main className="screen-body questionnaire">
     <div className="progress-row"><span>步骤 2 / 3</span><strong>{questionIndex + 1}/{QUESTIONNAIRE_ITEMS.length}</strong></div>
     <div className="progress-track"><i style={{ width: `${((questionIndex + 1) / QUESTIONNAIRE_ITEMS.length) * 100}%` }} /></div>
-    <h2>过去两周的状态</h2><p className="subcopy">请按过去 14 天（包括今天）出现的天数选择。</p>
+    <h2>状态问卷</h2>
     <section className="question-card single-question" key={question.id}>
       <p><b>{question.number}</b>{question.text}</p><div className="frequency-scale" role="radiogroup" aria-label={question.text}>
         {RESPONSE_OPTIONS.map((option) => <button key={option.score} className={study.answers[questionIndex] === option.score ? "selected" : ""} onClick={() => {
@@ -389,17 +380,10 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
           study.setAnswer(questionIndex, option.score, shown.iso, performance.now() - shown.performanceMs);
         }} aria-checked={study.answers[questionIndex] === option.score} role="radio"><strong>{option.label}</strong><small>{option.days}</small></button>)}
       </div>
-      <div className="skip-answer-row">
-        <button type="button" className={`skip-answer ${study.answers[questionIndex] === null ? "selected" : ""}`} onClick={() => {
-          const shown = questionShown.current.index === questionIndex ? questionShown.current : { iso: new Date().toISOString(), performanceMs: performance.now() };
-          study.setAnswer(questionIndex, null, shown.iso, performance.now() - shown.performanceMs);
-        }}>{study.answers[questionIndex] === null ? "已选择暂不回答" : "暂不回答此题"}</button>
-        <button type="button" className="skip-answer skip-answer-next" onClick={skipToNext}>跳过此题 →</button>
-      </div>
     </section>
     <div className={`question-nav ${questionIndex === 0 ? "single-action" : ""}`}>
       {questionIndex > 0 && <button className="secondary-button" onClick={() => setQuestionIndex((current) => current - 1)}>上一题</button>}
-      <button className="primary-button" disabled={study.answers[questionIndex] === undefined} onClick={() => {
+      <button className="primary-button" disabled={typeof study.answers[questionIndex] !== "number"} onClick={() => {
         if (isLastQuestion && resolved === QUESTIONNAIRE_ITEMS.length) { study.prepareWritingPlan(); flow.push(collectionScreen); }
         else setQuestionIndex((current) => Math.min(QUESTIONNAIRE_ITEMS.length - 1, current + 1));
       }}>{isLastQuestion ? "进入书写采集" : "下一题"}</button>
@@ -424,12 +408,23 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
   const movePointCount = useRef(0);
   const pathLength = useRef(0);
   const outOfBoundsPointCount = useRef(0);
+  const redoStrokes = useRef<Point[][]>([]);
+  const [redoCount, setRedoCount] = useState(0);
+  const touchSession = useRef<{
+    contacts: Map<number, { x: number; y: number }>;
+    started: number; maxFingers: number; moved: boolean; cancelled: boolean;
+    checkpoint: Point[]; redoCheckpoint: Point[][]; rolledBack: boolean;
+    native: boolean; touchOrigins: Map<number, { x: number; y: number }>;
+  } | null>(null);
+  const gesturesEnabled = task.id !== "PRESS_CHECK";
   const [pointCount, setPointCount] = useState(0);
   const [pointerType, setPointerType] = useState("");
   const [submissionQuality, setSubmissionQuality] = useState<QualityResult | null>(null);
 
   useEffect(() => {
-    const stopDrawing = () => { drawing.current = false; activePointerId.current = null; };
+    const stopDrawing = (event: PointerEvent) => {
+      if (activePointerId.current === event.pointerId) { drawing.current = false; activePointerId.current = null; }
+    };
     const recordVisibility = () => interruptions.current.push({ type: document.hidden ? "visibility-hidden" : "visibility-visible",
       timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) });
     window.addEventListener("pointerup", stopDrawing);
@@ -504,7 +499,168 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     activePointerId.current = null;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
   };
+  // Rebuild both the display and acquisition metrics from the retained raw strokes.
+  const restorePoints = (retained: Point[]) => {
+    points.current = retained;
+    strokeId.current = retained.at(-1)?.strokeId ?? 0;
+    firstEventTimestamp.current = retained[0]?.eventTimestampMs ?? 0;
+    startedAt.current = retained.length ? new Date(retained[0].timestamp).toISOString() : "";
+    movePointCount.current = retained.filter((point) => point.phase === "move").length;
+    outOfBoundsPointCount.current = retained.filter((point) => !point.insideCanvas).length;
+    pathLength.current = 0;
+    pressureRange.current = { min: 1, max: 0 };
+    observedPointerTypes.current = new Set(retained.map((point) => point.pointerType));
+    penSeen.current = retained.some((point) => point.pointerType === "pen");
+    const canvas = canvasRef.current;
+    canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    retained.forEach((point, index) => {
+      const previous = retained[index - 1];
+      if (previous?.strokeId === point.strokeId) pathLength.current += Math.hypot(point.x - previous.x, point.y - previous.y);
+      if (point.pointerType === "pen" && point.pressure > 0) {
+        pressureRange.current.min = Math.min(pressureRange.current.min, point.pressure);
+        pressureRange.current.max = Math.max(pressureRange.current.max, point.pressure);
+      }
+      draw(point, previous);
+    });
+    drawing.current = false; activePointerId.current = null;
+    setPointerType(penSeen.current ? "pen" : retained.at(-1)?.pointerType ?? "");
+    setPointCount(retained.length); setSubmissionQuality(null);
+  };
+  const editStroke = (action: "undo" | "redo") => {
+    if (action === "undo") {
+      const last = points.current.at(-1);
+      if (!last) return;
+      const start = points.current.findIndex((point) => point.strokeId === last.strokeId);
+      redoStrokes.current.push(points.current.slice(start));
+      setRedoCount(redoStrokes.current.length);
+      restorePoints(points.current.slice(0, start));
+    } else {
+      const stroke = redoStrokes.current.pop();
+      if (!stroke) return;
+      setRedoCount(redoStrokes.current.length);
+      restorePoints([...points.current, ...stroke]);
+    }
+    interruptions.current.push({ type: `stroke-${action}`, timestamp: new Date().toISOString(),
+      taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) });
+  };
+  const beginTouchSession = (timestamp: number) => {
+    if (!touchSession.current) touchSession.current = {
+      contacts: new Map(), started: timestamp, maxFingers: 0, moved: false,
+      cancelled: drawing.current, checkpoint: [...points.current], redoCheckpoint: [...redoStrokes.current], rolledBack: false,
+      native: false, touchOrigins: new Map(),
+    };
+    return touchSession.current;
+  };
+  const rollbackTouchPreview = () => {
+    const session = touchSession.current;
+    if (session && !session.cancelled && !session.rolledBack && session.maxFingers > 1) {
+      restorePoints(session.checkpoint);
+      redoStrokes.current = [...session.redoCheckpoint];
+      setRedoCount(redoStrokes.current.length);
+      session.rolledBack = true;
+    }
+  };
+  const completeTouchSession = (timestamp: number) => {
+    const session = touchSession.current;
+    touchSession.current = null;
+    if (!session) return;
+    if (session.maxFingers === 1 && points.current.length > session.checkpoint.length) {
+      // Only committed ink invalidates redo, never a gesture's provisional first contact.
+      redoStrokes.current = []; setRedoCount(0);
+      return;
+    }
+    if (session.cancelled) return;
+    if (!session.moved && timestamp - session.started <= 400) {
+      if (session.maxFingers === 2) editStroke("undo");
+      if (session.maxFingers === 3) editStroke("redo");
+    }
+  };
+  const touchDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!gesturesEnabled || event.pointerType !== "touch") return false;
+    const session = beginTouchSession(event.timeStamp);
+    session.contacts.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    session.maxFingers = Math.max(session.maxFingers, session.contacts.size);
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (session.maxFingers > 1) {
+      rollbackTouchPreview();
+      return true;
+    }
+    return session.cancelled;
+  };
+  const touchMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const session = touchSession.current;
+    if (event.pointerType !== "touch" || !session) return false;
+    const origin = session.contacts.get(event.pointerId);
+    if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12) session.moved = true;
+    return session.maxFingers > 1 || session.cancelled;
+  };
+  const touchEnd = (event: ReactPointerEvent<HTMLCanvasElement>, cancelled = false) => {
+    const session = touchSession.current;
+    if (event.pointerType !== "touch" || !session) return false;
+    const suppressed = session.maxFingers > 1 || session.cancelled;
+    touchMove(event);
+    // TouchEvents carry the whole contact list on Android. A lost pointer capture
+    // or a missing secondary pointer event must not prematurely cancel the gesture.
+    if (session.native) return suppressed;
+    session.cancelled ||= cancelled;
+    session.contacts.delete(event.pointerId);
+    if (session.contacts.size === 0) completeTouchSession(event.timeStamp);
+    return suppressed;
+  };
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !gesturesEnabled) return;
+    const updateMovement = (event: TouchEvent) => {
+      const session = touchSession.current;
+      if (!session) return;
+      for (const touch of Array.from(event.changedTouches)) {
+        const origin = session.touchOrigins.get(touch.identifier);
+        if (origin && Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 12) session.moved = true;
+      }
+    };
+    const start = (event: TouchEvent) => {
+      const session = beginTouchSession(event.timeStamp);
+      session.native = true;
+      // Use all contacts targeting this canvas, even if WebView omits a pointerdown.
+      session.maxFingers = Math.max(session.maxFingers, event.targetTouches.length);
+      for (const touch of Array.from(event.changedTouches)) {
+        session.touchOrigins.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+      rollbackTouchPreview();
+      if (session.maxFingers > 1 && event.cancelable) event.preventDefault();
+    };
+    const move = (event: TouchEvent) => {
+      updateMovement(event);
+      if ((touchSession.current?.maxFingers ?? 0) > 1 && event.cancelable) event.preventDefault();
+    };
+    const end = (event: TouchEvent) => {
+      const session = touchSession.current;
+      if (!session?.native) return;
+      updateMovement(event);
+      session.cancelled ||= event.type === "touchcancel";
+      if (session.maxFingers > 1 && event.cancelable) event.preventDefault();
+      if (event.targetTouches.length === 0) {
+        if (activePointerId.current !== null && session.contacts.has(activePointerId.current)) {
+          drawing.current = false; activePointerId.current = null;
+        }
+        completeTouchSession(event.timeStamp);
+      }
+    };
+    // Native non-passive listeners let the canvas own these gestures in Android WebView.
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end, { passive: false });
+    canvas.addEventListener("touchcancel", end, { passive: false });
+    return () => {
+      canvas.removeEventListener("touchstart", start);
+      canvas.removeEventListener("touchmove", move);
+      canvas.removeEventListener("touchend", end);
+      canvas.removeEventListener("touchcancel", end);
+    };
+  }, [gesturesEnabled]);
   const clear = () => {
+    redoStrokes.current = []; setRedoCount(0); touchSession.current = null;
     points.current = []; strokeId.current = 0; startedAt.current = ""; firstEventTimestamp.current = 0; setPointCount(0);
     movePointCount.current = 0; pathLength.current = 0; outOfBoundsPointCount.current = 0;
     drawing.current = false; activePointerId.current = null; penSeen.current = false; observedPointerTypes.current = new Set();
@@ -530,26 +686,47 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       interruptions: interruptions.current, metrics, quality });
   };
   const displayedQuality = submissionQuality ?? liveQuality;
-  const inputLabel = pointerType === "pen" ? "数位笔模式" : pointerType === "touch" ? "触摸输入模式（无压感）"
-    : pointerType === "mouse" ? "鼠标/兼容模式输入" : "接触画布后开始书写";
-  const inputHint = pointerType === "touch" ? "未检测到压感笔，本次将记录为无压感样本，仍可提交"
-    : pointerType === "mouse" ? "当前为鼠标或兼容模式输入，本次将记录为无压感样本，仍可提交" : "";
   const hintText = displayedQuality.canSubmit
     ? (displayedQuality.warnings[0] ?? "本页书写质量已达到提交要求")
     : displayedQuality.issues[0];
-  return <><div className={`device-check ${pointerType === "pen" ? "pen-ready" : pointerType ? "compat-mode" : ""}`}>
-    <strong>{inputLabel}</strong>
-    {inputHint && <small>{inputHint}</small>}
+  return <><div className="device-check">
+    <strong>接触画布后开始书写{gesturesEnabled && " · 双指点击撤回，三指点击取消"}</strong>
   </div>
   <div className="canvas-wrap" data-scroll-drag="ignore"><canvas ref={canvasRef} aria-label="书写区域" data-point-count={pointCount} data-drawing={drawing.current ? "true" : "false"}
-    onPointerDown={(event) => { if (!event.isPrimary || event.button !== 0) return; event.preventDefault(); setSubmissionQuality(null); observeInput(event.nativeEvent); event.currentTarget.setPointerCapture(event.pointerId); drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1; if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); } record(event, "down"); }}
-    onPointerMove={(event) => { observeInput(event.nativeEvent); if (!drawing.current || activePointerId.current !== event.pointerId) return; if (!hasContact(event.nativeEvent)) { endStroke(event, false); return; } event.preventDefault(); record(event, "move"); }}
-    onPointerUp={(event) => endStroke(event)}
-    onPointerCancel={(event) => { interruptions.current.push({ type: "pointer-cancel", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); endStroke(event, false); }}
-    onLostPointerCapture={(event) => { if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; } }} />
+    onPointerDown={(event) => {
+      if (touchDown(event)) return;
+      if (!event.isPrimary || event.button !== 0) return;
+      // Pen contact during a touch sequence is never an undo/redo gesture.
+      if (event.pointerType !== "touch" && touchSession.current) touchSession.current.cancelled = true;
+      event.preventDefault(); setSubmissionQuality(null); observeInput(event.nativeEvent);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      if (event.pointerType !== "touch" || !gesturesEnabled) { redoStrokes.current = []; setRedoCount(0); }
+      drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1;
+      if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); }
+      record(event, "down");
+    }}
+    onPointerMove={(event) => {
+      if (touchMove(event)) return;
+      if (!drawing.current || activePointerId.current !== event.pointerId) return;
+      observeInput(event.nativeEvent);
+      if (!hasContact(event.nativeEvent)) { endStroke(event, false); return; }
+      event.preventDefault(); record(event, "move");
+    }}
+    onPointerUp={(event) => { if (!touchEnd(event)) endStroke(event); }}
+    onPointerCancel={(event) => {
+      touchEnd(event, true);
+      interruptions.current.push({ type: "pointer-cancel", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); endStroke(event, false);
+    }}
+    onLostPointerCapture={(event) => {
+      if (!touchSession.current?.native && touchSession.current?.contacts.has(event.pointerId)) touchEnd(event, true);
+      if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; }
+    }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
-    {pointCount > 0 && <p className={`quality-hint ${displayedQuality.canSubmit && displayedQuality.warnings.length === 0 ? "ready" : ""}`}>{hintText}</p>}
-    <div className="writing-actions" data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button><button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
+    <p className={`quality-hint ${displayedQuality.canSubmit && displayedQuality.warnings.length === 0 ? "ready" : ""}`} aria-live="polite">{pointCount > 0 ? hintText : ""}</p>
+    <div className={`writing-actions ${gesturesEnabled ? "with-history" : ""}`} data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button>
+      {gesturesEnabled && <><button type="button" className="secondary-button" aria-label="撤回上一笔" disabled={pointCount === 0} onClick={() => { if (!drawing.current && !touchSession.current) editStroke("undo"); }}>撤回</button>
+        <button type="button" className="secondary-button" aria-label="恢复上一笔" disabled={redoCount === 0} onClick={() => { if (!drawing.current && !touchSession.current) editStroke("redo"); }}>恢复</button></>}
+      <button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
 }
 
 function Collection({ flow }: { flow: FlowControls }) {
@@ -602,6 +779,7 @@ function collectDeviceContext() {
 
 function Review() {
   const study = useStudy();
+  const assessment = calculateQuestionnaireSummary(study.answers, study.consent);
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "failed" | "skipped">("idle");
@@ -640,7 +818,7 @@ function Review() {
     const datasetEligibility = isAdministratorTest ? "excluded_test_record"
       : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
         : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
-    const payload = { schemaVersion: "1.6.0", appVersion: "handwriting-collector-mobile/1.6.0",
+    const payload = { schemaVersion: "1.7.0", appVersion: "handwriting-collector-mobile/1.7.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
@@ -652,19 +830,21 @@ function Review() {
         version: "local-anonymous-collection-v1.2", dataUseScope: ["demographics", "research", "model_development"] },
       questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
         instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
-        responseSchemaVersion: "questionnaire-response/1.2.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
+        source: QUESTIONNAIRE_SOURCE, responseSchemaVersion: "questionnaire-response/2.0.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
         recallPeriod: { days: 14, includesToday: true, startDate: formatLocalDate(recallStart), endDate: formatLocalDate(recallEnd),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         startedAt: study.answerRecords.find(Boolean)?.shownAt ?? study.sessionStartedAt,
         submittedAt: answeredTimes.sort().at(-1) ?? exportedAt,
         responseScale: RESPONSE_OPTIONS,
-        scoring: { higherDerivedScoreMeaning: "more_reported_difficulty", rawScoreMeaning: "selected_frequency_option_0_to_4",
-          reverseScoredItemIds: QUESTIONNAIRE_ITEMS.filter((item) => item.scoringDirection === "reverse").map((item) => item.id) },
+        scoring: { higherDerivedScoreMeaning: "better_mental_wellbeing", rawScoreMeaning: "selected_frequency_option_0_to_5",
+          rawTotalRange: [0, 25], percentageScoreRange: [0, 100], percentageMultiplier: 4,
+          furtherAssessmentRule: "rawTotal < 13 OR any item <= 1", reverseScoredItemIds: [] },
         items: study.answerRecords, responseEvents: study.answerEvents,
         derived: { completionStatus: summary.completionStatus, answeredCount: summary.answeredCount,
-          missingItemIds: summary.missingItemIds, domainScores: summary.domainScores, scoredItemValues: summary.scoredItemValues, symptomSumS: summary.symptomSumS,
-          breadthB: summary.breadthB, frequentF: summary.frequentF, impactI: summary.impactI,
-          resultTitle: summary.resultTitle, scoreRuleVersion: summary.scoreRuleVersion,
+          missingItemIds: summary.missingItemIds, unansweredItemIds: summary.unansweredItemIds, scoredItemValues: summary.scoredItemValues,
+          rawTotal: summary.rawTotal, percentageScore: summary.percentageScore,
+          belowCutoff: summary.belowCutoff, lowItemIds: summary.lowItemIds, needsFurtherAssessment: summary.needsFurtherAssessment,
+          resultTitle: summary.resultTitle, recommendation: summary.recommendation, scoreRuleVersion: summary.scoreRuleVersion,
           responseTiming: summary.responseTiming },
         quality: questionnaireQuality, linkedSessionIds: [sessionId] },
       writingPlan: { copyPromptAssignment: study.copyPromptAssignment, copyRepeatsRequired: 2,
@@ -701,6 +881,14 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2>
+    <section className="assessment-result" aria-label="WHO-5 状态评定">
+      <h3>{assessment.resultTitle ?? "量表未完整作答，暂不评定"}</h3>
+      {assessment.rawTotal !== null && <p className="assessment-score">{assessment.percentageScore} / 100 <small>原始分 {assessment.rawTotal} / 25</small></p>}
+      <p>{assessment.recommendation}</p>
+      <p className="subcopy">评估过去两周的心理幸福感，不代表即时情绪或疾病诊断。完整作答时，原始分低于 13 或任一题为 0～1 分提示进一步评估；未触发提示也不排除心理困扰。</p>
+      <a href={QUESTIONNAIRE_SOURCE} target="_blank" rel="noreferrer">量表来源与计分：WHO-5</a>
+      <p className="subcopy">© WHO 2024 · CC BY-NC-SA 3.0 IGO。采用 WHO 提供的中文版本；本应用未获 WHO 背书。</p>
+    </section>
     <button className="primary-button" disabled={busy || uploadState === "uploading"} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
     {uploadState === "uploading" && <p className="upload-note">正在上传到服务器…</p>}
@@ -712,7 +900,7 @@ function Review() {
 }
 
 const identityScreen = screen("identity", "采集信息", (flow) => <Identity flow={flow} />);
-const questionnaireScreen = screen("questionnaire", "状态量表", (flow) => <Questionnaire flow={flow} />);
+const questionnaireScreen = screen("questionnaire", "状态问卷", (flow) => <Questionnaire flow={flow} />);
 const collectionScreen = screen("collection", "书写采集", (flow) => <Collection flow={flow} />);
 const reviewScreen = screen("review", "完成采集", () => <Review />);
 const welcomeScreen: FlowScreen = { id: "welcome", render: (flow) => <Welcome flow={flow} /> };
@@ -736,13 +924,13 @@ export default function Prototype() {
     setConsent: (accepted) => { setConsentState(accepted); setConsentAcceptedAt(accepted ? new Date().toISOString() : ""); },
     answers, answerRecords, setAnswer: (index, score, shownAt, responseTimeMs) => {
       const item = QUESTIONNAIRE_ITEMS[index];
-      const option = score === null ? null : RESPONSE_OPTIONS.find((entry) => entry.score === score) ?? null;
+      const option = RESPONSE_OPTIONS.find((entry) => entry.score === score);
       const answeredAt = new Date().toISOString();
       const scoredScore = scoreQuestionnaireAnswer(item, score) as QuestionnaireScore | null;
       const record: AnswerRecord = { questionId: item.id, itemNumber: item.number, domain: item.domain, domainLabel: item.domainLabel,
         question: item.text, score, rawScore: score, scoredScore, scoringDirection: item.scoringDirection,
         responseLabel: option?.label ?? null, dayRange: option?.days ?? null,
-        missingReason: score === null ? "prefer_not_to_answer" : null, shownAt, answeredAt, responseTimeMs: round(responseTimeMs, 1) };
+        missingReason: null, shownAt, answeredAt, responseTimeMs: round(responseTimeMs, 1) };
       const previousScore = answers[index] === undefined ? "unanswered" : answers[index] as QuestionnaireScore | null;
       const revision = answerEvents.filter((event) => event.questionId === item.id).length + 1;
       setAnswers((current) => current.map((value, i) => i === index ? score : value));
