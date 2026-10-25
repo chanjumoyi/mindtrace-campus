@@ -2,12 +2,14 @@
 
 本目录是离线笔迹模型研发的 OpenSpec 入口。当前变更为 [`plan-handwriting-model-training`](changes/plan-handwriting-model-training/proposal.md)，状态为规划完成、实现待开始。`specs/` 为未来归档后的正式能力基线，目前不预先归档尚未实现的能力。
 
+先看 [训练流程](changes/plan-handwriting-model-training/training-flow.md)，再按实施任务逐步推进。
+
 ## 阅读顺序
 
 1. [proposal.md](changes/plan-handwriting-model-training/proposal.md)：范围、目标和能力边界。
 2. [design.md](changes/plan-handwriting-model-training/design.md)：整体路线、目录、数据契约、实验与交付门槛。
 3. [tasks.md](changes/plan-handwriting-model-training/tasks.md)：分阶段实施清单与验收。
-4. [decisions.md](changes/plan-handwriting-model-training/decisions.md)：已确认决策、未决问题及影响。
+4. [decisions.md](changes/plan-handwriting-model-training/decisions.md)：已确认决策及执行边界。
 5. `changes/plan-handwriting-model-training/specs/*/spec.md`：可验证的行为要求。
 
 从 tasks 的阶段 1 开始，逐个交付。文档生成并不表示任务已经执行、数据已经获授权或模型已经通过验证。
