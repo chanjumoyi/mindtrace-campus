@@ -75,3 +75,9 @@ When any text-entry control loses focus, dismiss the simulated keyboard. If the 
 - Keep the official WHO-5 five items and scoring; questionnaire heading/header is 状态问卷. Do not show the introductory score explanation or skip/prefer-not-to-answer controls. Require a selected answer before proceeding.
 - Copy and free-writing canvases support a two-finger tap to undo one whole stroke and a three-finger tap to redo it; show 接触画布后开始书写 · 双指点击撤回，三指点击取消 persistently above the canvas. Do not replace it with dynamic input-mode warnings. Input capability metadata and acquisition quality checks remain active.
 - Multitouch gestures must not leave acquisition points, and history edits must rebuild the canvas and derived quality metrics. New ink and clear invalidate redo history. Pressure warmup remains outside this gesture feature.
+
+## Android gesture compatibility follow-up
+
+- Prefer native TouchEvent targetTouches for gesture finger counts and completion. Pointer capture loss alone does not cancel an active native touch sequence; genuine touchcancel still does. Keep the PointerEvent fallback for environments without TouchEvents.
+- Keep explicit 撤回/恢复 buttons on copy/free-writing pages for devices whose system gestures consume three-finger input. Both controls use the same stroke history and metrics as touch gestures.
+- Android identity, questionnaire and review content must remain scrollable on small/resized viewports. Tests mocking the Capacitor bridge verify API contracts only; they do not substitute for Xiaomi/HyperOS device acceptance.

@@ -61,3 +61,11 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 16px; font-family: "STKaiti", "
 .assessment-score { font-size: 26px; font-weight: 700; color: #314b43; }
 .assessment-score small { display: block; font-size: 13px; font-weight: 400; }
 .assessment-result a { color: #314b43; text-decoration: underline; }
+
+.writing-actions.with-history { grid-template-columns: 72px 44px 44px minmax(0, 1fr); gap: 6px; }
+.writing-actions.with-history button { font-size: 13px; padding: 0 3px; }
+.writing-actions .secondary-button:disabled { opacity: .4; cursor: default; }
+.native-shell .identity-screen, .native-shell .questionnaire, .native-shell .review-screen { overflow-y: auto; overscroll-behavior: contain; }
+.native-shell .review-screen { display: block; }
+.native-shell .questionnaire > * { flex-shrink: 0; }
+.native-shell .questionnaire .question-nav { padding-top: 14px; }

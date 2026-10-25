@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
+import { ink } from "./pen-input";
+
 const screenshotRoot = "artifacts/screenshots";
 async function screenshot(page: Page, name: string) {
   await page.mouse.move(5, 5);
@@ -34,27 +36,6 @@ async function answer(page:Page,screen:Locator) {
     if(i===1) await screenshot(page,"01-questionnaire");
     await screen.getByRole("button",{name:i===4?"进入书写采集":"下一题"}).click();
   }
-}
-async function ink(canvas:Locator, warmup=false, strokes=45) {
-  await canvas.evaluate((node,opts)=>{
-    const oldCapture=node.setPointerCapture, oldRelease=node.releasePointerCapture;
-    node.setPointerCapture=()=>{};node.releasePointerCapture=()=>{};
-    const rect=node.getBoundingClientRect();let stamp=performance.now();
-    const fire=(type:string,x:number,y:number)=>{
-      const e=new PointerEvent(type,{bubbles:true,pointerId:90,pointerType:"pen",isPrimary:true,button:0,
-        buttons:type==="pointerup"?0:1,pressure:type==="pointerup"?0:0.4+(x%5)/20,
-        clientX:rect.left+x,clientY:rect.top+y});
-      Object.defineProperty(e,"timeStamp",{value:stamp});stamp+=40;
-      Object.defineProperty(e,"getCoalescedEvents",{value:()=>[e]});node.dispatchEvent(e);
-    };
-    for(let i=0;i<(opts.warmup?3:opts.strokes);i++) {
-      const x=20+(i%7)*35,y=25+(Math.floor(i/7)%5)*30;
-      fire("pointerdown",x,y);
-      for(let j=1;j<=12;j++)fire("pointermove",x+j*(opts.warmup?4:2),y+(opts.warmup?0:j%2*5));
-      fire("pointerup",x+(opts.warmup?48:24),y);
-    }
-    node.setPointerCapture=oldCapture;node.releasePointerCapture=oldRelease;
-  },{warmup,strokes});
 }
 async function gesture(page:Page,canvas:Locator,fingers:number,mode:"tap"|"drag"|"cancel"|"hold"="tap") {
   const box=(await canvas.boundingBox())!;
@@ -94,6 +75,12 @@ test("real multitouch undoes/redoes copy and free-writing without changing raw d
       expect((await pixels(canvas)) === before, "restored canvas must match the retained strokes").toBe(true);
       await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击取消");
       await expect(screen.locator(".device-check")).not.toContainText("输入模式");
+      await expect(screen.getByRole("button",{name:"恢复上一笔"})).toBeDisabled();
+      await screen.getByRole("button",{name:"撤回上一笔"}).click();
+      await expect(canvas).toHaveAttribute("data-point-count","616");
+      await screen.getByRole("button",{name:"恢复上一笔"}).click();
+      await expect(canvas).toHaveAttribute("data-point-count","630");
+      expect((await pixels(canvas))===before).toBe(true);
 
     }
     await screen.getByRole("button",{name:"确认本页书写"}).click();
@@ -106,7 +93,7 @@ test("real multitouch undoes/redoes copy and free-writing without changing raw d
     expect(attempt.metrics.strokeCount).toBe(45);expect(attempt.metrics.movePointCount).toBe(540);
     expect(attempt.points.every((p:any)=>p.pointerType==="pen")).toBe(true);
     expect(attempt.points.map((p:any)=>p.seq)).toEqual(Array.from({length:630},(_,i)=>i));
-    expect(attempt.interruptions.filter((e:any)=>e.type.startsWith("stroke-")).map((e:any)=>e.type)).toEqual(["stroke-undo","stroke-redo"]);
+    expect(attempt.interruptions.filter((e:any)=>e.type.startsWith("stroke-")).map((e:any)=>e.type)).toEqual(["stroke-undo","stroke-redo","stroke-undo","stroke-redo"]);
   }
 });
 
@@ -129,4 +116,29 @@ test("gesture guards, redo invalidation, and empty canvas keep correct history",
   await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击取消");
   await expect(screen.locator(".device-check")).not.toContainText("触摸输入模式");
 
+});
+
+for (const fault of ["missing-third-pointer", "lost-capture"] as const) test(`three-finger redo survives ${fault}`,async({page})=>{
+  const screen=await questionnaire(page);await answer(page,screen);
+  let canvas=screen.locator("canvas");await ink(canvas,true);await screen.getByRole("button",{name:"确认本页书写"}).click();
+  canvas=screen.locator("canvas");await expect(canvas).toBeVisible();
+  await ink(canvas,false,2);const original=await pixels(canvas);
+  await gesture(page,canvas,2);await expect(canvas).toHaveAttribute("data-point-count","14");
+  await canvas.evaluate((node,fault)=>{
+    let downs=0;
+    const listener=(event:PointerEvent)=>{
+      if(event.pointerType!=="touch")return;
+      downs++;
+      // Emulate incomplete/reordered WebView pointer delivery while native TouchEvents remain intact.
+      if(fault==="missing-third-pointer" && downs===3)event.stopImmediatePropagation();
+      if(fault==="lost-capture" && downs===2)node.dispatchEvent(new PointerEvent("lostpointercapture",{
+        bubbles:true,pointerType:"touch",pointerId:event.pointerId-1,isPrimary:true,
+      }));
+      if(downs===3)node.removeEventListener("pointerdown",listener,true);
+    };
+    node.addEventListener("pointerdown",listener,true);
+  },fault);
+  await gesture(page,canvas,3);
+  await expect(canvas).toHaveAttribute("data-point-count","28");
+  expect((await pixels(canvas))===original).toBe(true);
 });
