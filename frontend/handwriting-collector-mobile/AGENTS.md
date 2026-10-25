@@ -69,3 +69,9 @@ When any text-entry control loses focus, dismiss the simulated keyboard. If the 
 - Fixed phone chrome should not animate with pushed screens. Screen content can animate; the status bar, camera cutout, and preview chrome should stay put.
 - Keep the keyboard below the home indicator/safe area layer in z-index, and above ordinary app UI while visible.
 - Keep the home indicator as the topmost safe-area layer in the z-index above everything else in the prototype.
+
+## Collector interaction decisions (2026-10-25)
+
+- Keep the official WHO-5 five items and scoring; questionnaire heading/header is 状态问卷. Do not show the introductory score explanation or skip/prefer-not-to-answer controls. Require a selected answer before proceeding.
+- Copy and free-writing canvases support a two-finger tap to undo one whole stroke and a three-finger tap to redo it; show 接触画布后开始书写 · 双指点击撤回，三指点击取消 persistently above the canvas. Do not replace it with dynamic input-mode warnings. Input capability metadata and acquisition quality checks remain active.
+- Multitouch gestures must not leave acquisition points, and history edits must rebuild the canvas and derived quality metrics. New ink and clear invalidate redo history. Pressure warmup remains outside this gesture feature.

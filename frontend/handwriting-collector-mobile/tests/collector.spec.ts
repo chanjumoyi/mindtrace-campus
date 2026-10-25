@@ -35,7 +35,7 @@ test("initial collection creates the requested ID and keeps pen-safe writing act
   await expect(currentScreen.getByRole("button", { name: "确认本页书写" })).toHaveAttribute("type", "button");
 });
 
-test("skipping a question records prefer-not-to-answer and advances", async ({ page }) => {
+test("questionnaire requires a response and preserves answers when returning", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "开始采集" }).click();
   const currentScreen = page.locator('.flow-screen[data-flow-current="true"]');
@@ -47,13 +47,17 @@ test("skipping a question records prefer-not-to-answer and advances", async ({ p
   await currentScreen.getByRole("checkbox").check();
   await currentScreen.getByRole("button", { name: "继续" }).click();
 
-  await expect(currentScreen).toContainText("1/5");
-  await currentScreen.getByRole("button", { name: /跳过此题/ }).click();
+  await expect(currentScreen.getByRole("heading", { name: "状态问卷" })).toBeVisible();
+  await expect(currentScreen).not.toContainText("分数越高");
+  await expect(currentScreen.getByRole("button", { name: /跳过|暂不回答/ })).toHaveCount(0);
+  await expect(currentScreen.getByRole("button", { name: "下一题" })).toBeDisabled();
+  await currentScreen.getByRole("radio", { name: "有时候 1 分" }).click();
+  await currentScreen.getByRole("button", { name: "下一题" }).click();
   await expect(currentScreen).toContainText("2/5");
-
+  await expect(currentScreen.getByRole("button", { name: "下一题" })).toBeDisabled();
   await currentScreen.getByRole("button", { name: "上一题" }).click();
   await expect(currentScreen).toContainText("1/5");
-  await expect(currentScreen.getByRole("button", { name: "已选择暂不回答" })).toBeVisible();
+  await expect(currentScreen.getByRole("radio", { name: "有时候 1 分" })).toHaveAttribute("aria-checked", "true");
 });
 
 test("follow-up collection accepts the fixed administrator test ID", async ({ page }) => {
@@ -87,7 +91,7 @@ test("identity actions keep visual spacing and the keyboard dismisses outside fi
   await expect(page.getByTestId("keyboard-dock")).toHaveAttribute("data-visible", "false");
 });
 
-for (const skipped of [false, true]) test(`WHO-5 review and exported session preserve upload transport (skipped=${skipped})`, async ({ page }) => {
+test("WHO-5 review and exported session preserve upload transport", async ({ page }) => {
   test.setTimeout(45_000);
   let uploaded: Record<string, any> | undefined;
   await page.route("**/api/handwriting-sessions", async route => {
@@ -107,8 +111,7 @@ for (const skipped of [false, true]) test(`WHO-5 review and exported session pre
   await screen.getByRole("checkbox").check();
   await screen.getByRole("button", {name:"继续",exact:true}).click();
   for (let i=0;i<5;i++) {
-    if (skipped && i===0) await screen.getByRole("button", {name:/跳过此题/}).click();
-    else {
+    {
       await screen.getByRole("radio", {name:"少于一半的时间 2 分"}).click();
       await screen.getByRole("button", {name:i===4 ? "进入书写采集" : "下一题"}).click();
     }
@@ -137,10 +140,10 @@ for (const skipped of [false, true]) test(`WHO-5 review and exported session pre
     },task);
     await screen.getByRole("button",{name:"确认本页书写"}).click();
   }
-  await expect(screen.getByRole("region",{name:"WHO-5 状态评定"})).toContainText(skipped?"量表未完整作答，暂不评定":"近期心理幸福感偏低");
+  await expect(screen.getByRole("region",{name:"WHO-5 状态评定"})).toContainText("近期心理幸福感偏低");
   await expect(screen).toHaveCount(1);
-  if(!skipped) await expect(screen).toContainText("40 / 100");
-  await page.screenshot({path:`test-results/who5-review-${skipped}.png`});
+  await expect(screen).toContainText("40 / 100");
+  await page.screenshot({path:"test-results/who5-review.png"});
   const download=page.waitForEvent("download");
   await screen.getByRole("button",{name:"保存并导出 JSON"}).click();
   await download;
@@ -148,7 +151,7 @@ for (const skipped of [false, true]) test(`WHO-5 review and exported session pre
   expect(uploaded?.schemaVersion).toBe("1.7.0");
   expect(uploaded?.questionnaire.items).toHaveLength(5);
   expect(uploaded?.questionnaire.scoring.higherDerivedScoreMeaning).toBe("better_mental_wellbeing");
-  expect(uploaded?.questionnaire.derived.rawTotal).toBe(skipped?null:10);
-  expect(uploaded?.questionnaire.derived.percentageScore).toBe(skipped?null:40);
-  expect(uploaded?.questionnaire.derived.needsFurtherAssessment).toBe(skipped?null:true);
+  expect(uploaded?.questionnaire.derived.rawTotal).toBe(10);
+  expect(uploaded?.questionnaire.derived.percentageScore).toBe(40);
+  expect(uploaded?.questionnaire.derived.needsFurtherAssessment).toBe(true);
 });
