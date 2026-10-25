@@ -409,10 +409,12 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
   const pathLength = useRef(0);
   const outOfBoundsPointCount = useRef(0);
   const redoStrokes = useRef<Point[][]>([]);
+  const [redoCount, setRedoCount] = useState(0);
   const touchSession = useRef<{
     contacts: Map<number, { x: number; y: number }>;
     started: number; maxFingers: number; moved: boolean; cancelled: boolean;
     checkpoint: Point[]; redoCheckpoint: Point[][]; rolledBack: boolean;
+    native: boolean; touchOrigins: Map<number, { x: number; y: number }>;
   } | null>(null);
   const gesturesEnabled = task.id !== "PRESS_CHECK";
   const [pointCount, setPointCount] = useState(0);
@@ -530,32 +532,58 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       if (!last) return;
       const start = points.current.findIndex((point) => point.strokeId === last.strokeId);
       redoStrokes.current.push(points.current.slice(start));
+      setRedoCount(redoStrokes.current.length);
       restorePoints(points.current.slice(0, start));
     } else {
       const stroke = redoStrokes.current.pop();
       if (!stroke) return;
+      setRedoCount(redoStrokes.current.length);
       restorePoints([...points.current, ...stroke]);
     }
     interruptions.current.push({ type: `stroke-${action}`, timestamp: new Date().toISOString(),
       taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) });
   };
+  const beginTouchSession = (timestamp: number) => {
+    if (!touchSession.current) touchSession.current = {
+      contacts: new Map(), started: timestamp, maxFingers: 0, moved: false,
+      cancelled: drawing.current, checkpoint: [...points.current], redoCheckpoint: [...redoStrokes.current], rolledBack: false,
+      native: false, touchOrigins: new Map(),
+    };
+    return touchSession.current;
+  };
+  const rollbackTouchPreview = () => {
+    const session = touchSession.current;
+    if (session && !session.cancelled && !session.rolledBack && session.maxFingers > 1) {
+      restorePoints(session.checkpoint);
+      redoStrokes.current = [...session.redoCheckpoint];
+      setRedoCount(redoStrokes.current.length);
+      session.rolledBack = true;
+    }
+  };
+  const completeTouchSession = (timestamp: number) => {
+    const session = touchSession.current;
+    touchSession.current = null;
+    if (!session) return;
+    if (session.maxFingers === 1 && points.current.length > session.checkpoint.length) {
+      // Only committed ink invalidates redo, never a gesture's provisional first contact.
+      redoStrokes.current = []; setRedoCount(0);
+      return;
+    }
+    if (session.cancelled) return;
+    if (!session.moved && timestamp - session.started <= 400) {
+      if (session.maxFingers === 2) editStroke("undo");
+      if (session.maxFingers === 3) editStroke("redo");
+    }
+  };
   const touchDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!gesturesEnabled || event.pointerType !== "touch") return false;
-    if (!touchSession.current) touchSession.current = {
-      contacts: new Map(), started: event.timeStamp, maxFingers: 0, moved: false,
-      cancelled: drawing.current, checkpoint: [...points.current], redoCheckpoint: [...redoStrokes.current], rolledBack: false,
-    };
-    const session = touchSession.current;
+    const session = beginTouchSession(event.timeStamp);
     session.contacts.set(event.pointerId, { x: event.clientX, y: event.clientY });
     session.maxFingers = Math.max(session.maxFingers, session.contacts.size);
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     if (session.maxFingers > 1) {
-      if (!session.cancelled && !session.rolledBack) {
-        restorePoints(session.checkpoint);
-        redoStrokes.current = [...session.redoCheckpoint];
-        session.rolledBack = true;
-      }
+      rollbackTouchPreview();
       return true;
     }
     return session.cancelled;
@@ -572,19 +600,67 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     if (event.pointerType !== "touch" || !session) return false;
     const suppressed = session.maxFingers > 1 || session.cancelled;
     touchMove(event);
+    // TouchEvents carry the whole contact list on Android. A lost pointer capture
+    // or a missing secondary pointer event must not prematurely cancel the gesture.
+    if (session.native) return suppressed;
     session.cancelled ||= cancelled;
     session.contacts.delete(event.pointerId);
-    if (session.contacts.size === 0) {
-      touchSession.current = null;
-      if (!session.cancelled && !session.moved && event.timeStamp - session.started <= 400) {
-        if (session.maxFingers === 2) editStroke("undo");
-        if (session.maxFingers === 3) editStroke("redo");
-      }
-    }
+    if (session.contacts.size === 0) completeTouchSession(event.timeStamp);
     return suppressed;
   };
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !gesturesEnabled) return;
+    const updateMovement = (event: TouchEvent) => {
+      const session = touchSession.current;
+      if (!session) return;
+      for (const touch of Array.from(event.changedTouches)) {
+        const origin = session.touchOrigins.get(touch.identifier);
+        if (origin && Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 12) session.moved = true;
+      }
+    };
+    const start = (event: TouchEvent) => {
+      const session = beginTouchSession(event.timeStamp);
+      session.native = true;
+      // Use all contacts targeting this canvas, even if WebView omits a pointerdown.
+      session.maxFingers = Math.max(session.maxFingers, event.targetTouches.length);
+      for (const touch of Array.from(event.changedTouches)) {
+        session.touchOrigins.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+      rollbackTouchPreview();
+      if (session.maxFingers > 1 && event.cancelable) event.preventDefault();
+    };
+    const move = (event: TouchEvent) => {
+      updateMovement(event);
+      if ((touchSession.current?.maxFingers ?? 0) > 1 && event.cancelable) event.preventDefault();
+    };
+    const end = (event: TouchEvent) => {
+      const session = touchSession.current;
+      if (!session?.native) return;
+      updateMovement(event);
+      session.cancelled ||= event.type === "touchcancel";
+      if (session.maxFingers > 1 && event.cancelable) event.preventDefault();
+      if (event.targetTouches.length === 0) {
+        if (activePointerId.current !== null && session.contacts.has(activePointerId.current)) {
+          drawing.current = false; activePointerId.current = null;
+        }
+        completeTouchSession(event.timeStamp);
+      }
+    };
+    // Native non-passive listeners let the canvas own these gestures in Android WebView.
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end, { passive: false });
+    canvas.addEventListener("touchcancel", end, { passive: false });
+    return () => {
+      canvas.removeEventListener("touchstart", start);
+      canvas.removeEventListener("touchmove", move);
+      canvas.removeEventListener("touchend", end);
+      canvas.removeEventListener("touchcancel", end);
+    };
+  }, [gesturesEnabled]);
   const clear = () => {
-    redoStrokes.current = []; touchSession.current = null;
+    redoStrokes.current = []; setRedoCount(0); touchSession.current = null;
     points.current = []; strokeId.current = 0; startedAt.current = ""; firstEventTimestamp.current = 0; setPointCount(0);
     movePointCount.current = 0; pathLength.current = 0; outOfBoundsPointCount.current = 0;
     drawing.current = false; activePointerId.current = null; penSeen.current = false; observedPointerTypes.current = new Set();
@@ -624,7 +700,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       if (event.pointerType !== "touch" && touchSession.current) touchSession.current.cancelled = true;
       event.preventDefault(); setSubmissionQuality(null); observeInput(event.nativeEvent);
       event.currentTarget.setPointerCapture(event.pointerId);
-      redoStrokes.current = [];
+      if (event.pointerType !== "touch" || !gesturesEnabled) { redoStrokes.current = []; setRedoCount(0); }
       drawing.current = true; activePointerId.current = event.pointerId; strokeId.current += 1;
       if (!startedAt.current) { firstEventTimestamp.current = event.nativeEvent.timeStamp; startedAt.current = new Date(performance.timeOrigin + event.nativeEvent.timeStamp).toISOString(); }
       record(event, "down");
@@ -642,12 +718,15 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       interruptions.current.push({ type: "pointer-cancel", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); endStroke(event, false);
     }}
     onLostPointerCapture={(event) => {
-      if (touchSession.current?.contacts.has(event.pointerId)) touchEnd(event, true);
+      if (!touchSession.current?.native && touchSession.current?.contacts.has(event.pointerId)) touchEnd(event, true);
       if (activePointerId.current === event.pointerId) { interruptions.current.push({ type: "lost-pointer-capture", timestamp: new Date().toISOString(), taskElapsedMs: round(performance.now() - promptShownPerformance.current, 1) }); drawing.current = false; activePointerId.current = null; }
     }} />
     {pointCount === 0 && <span className="canvas-placeholder">请在这里书写</span>}</div>
     <p className={`quality-hint ${displayedQuality.canSubmit && displayedQuality.warnings.length === 0 ? "ready" : ""}`} aria-live="polite">{pointCount > 0 ? hintText : ""}</p>
-    <div className="writing-actions" data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button><button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
+    <div className={`writing-actions ${gesturesEnabled ? "with-history" : ""}`} data-scroll-drag="ignore"><button type="button" className="secondary-button" onClick={clear}>清空重写</button>
+      {gesturesEnabled && <><button type="button" className="secondary-button" aria-label="撤回上一笔" disabled={pointCount === 0} onClick={() => { if (!drawing.current && !touchSession.current) editStroke("undo"); }}>撤回</button>
+        <button type="button" className="secondary-button" aria-label="恢复上一笔" disabled={redoCount === 0} onClick={() => { if (!drawing.current && !touchSession.current) editStroke("redo"); }}>恢复</button></>}
+      <button type="button" className="primary-button" disabled={!liveQuality.canSubmit} onClick={finish}>确认本页书写</button></div></>;
 }
 
 function Collection({ flow }: { flow: FlowControls }) {
