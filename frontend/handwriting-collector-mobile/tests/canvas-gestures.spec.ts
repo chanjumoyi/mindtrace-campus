@@ -77,7 +77,7 @@ test("real multitouch undoes/redoes copy and free-writing without changing raw d
     if(task===3) {
       await screenshot(page,"03-free-empty");
       await touchLine(page,canvas);
-      await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击取消");
+      await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击恢复");
       await screenshot(page,"04-free-touch-written");
       await screen.getByRole("button",{name:"清空重写"}).click();
     }
@@ -88,7 +88,7 @@ test("real multitouch undoes/redoes copy and free-writing without changing raw d
       expect(await pixels(canvas)).not.toBe(before);
       await gesture(page,canvas,3);await expect(canvas).toHaveAttribute("data-point-count","630");
       expect((await pixels(canvas)) === before, "restored canvas must match the retained strokes").toBe(true);
-      await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击取消");
+      await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击恢复");
       await expect(screen.locator(".device-check")).not.toContainText("输入模式");
       await expect(screen.getByRole("button",{name:"恢复上一笔"})).toBeDisabled();
       await screen.getByRole("button",{name:"撤回上一笔"}).click();
@@ -128,12 +128,12 @@ test("gesture guards, redo invalidation, and empty canvas keep correct history",
   await gesture(page,canvas,2);await screen.getByRole("button",{name:"清空重写"}).click();await gesture(page,canvas,3);await expect(canvas).toHaveAttribute("data-point-count","0");
   // Real one-finger writing still records points; multitouch must not disable it.
   await gesture(page,canvas,1);await expect(canvas).toHaveAttribute("data-point-count","2");
-  await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击取消");
+  await expect(screen.locator(".device-check")).toHaveText("接触画布后开始书写 · 双指点击撤回，三指点击恢复");
   await expect(screen.locator(".device-check")).not.toContainText("触摸输入模式");
 
 });
 
-for (const fault of ["missing-third-pointer", "lost-capture"] as const) test(`three-finger redo survives ${fault}`,async({page})=>{
+for (const fault of ["missing-third-pointer", "lost-capture", "missing-third-touchstart", "missing-both-third-starts"] as const) test(`three-finger redo survives ${fault}`,async({page})=>{
   const screen=await questionnaire(page);await answer(page,screen);
   let canvas=screen.locator("canvas");await ink(canvas,true);await screen.getByRole("button",{name:"确认本页书写"}).click();
   canvas=screen.locator("canvas");await expect(canvas).toBeVisible();
@@ -145,13 +145,22 @@ for (const fault of ["missing-third-pointer", "lost-capture"] as const) test(`th
       if(event.pointerType!=="touch")return;
       downs++;
       // Emulate incomplete/reordered WebView pointer delivery while native TouchEvents remain intact.
-      if(fault==="missing-third-pointer" && downs===3)event.stopImmediatePropagation();
+      if((fault==="missing-third-pointer" || fault==="missing-both-third-starts") && downs===3)event.stopImmediatePropagation();
       if(fault==="lost-capture" && downs===2)node.dispatchEvent(new PointerEvent("lostpointercapture",{
         bubbles:true,pointerType:"touch",pointerId:event.pointerId-1,isPrimary:true,
       }));
       if(downs===3)node.removeEventListener("pointerdown",listener,true);
     };
     node.addEventListener("pointerdown",listener,true);
+    if(fault === "missing-third-touchstart" || fault === "missing-both-third-starts") {
+      const dropThirdStart = (event: TouchEvent) => {
+        if(event.targetTouches.length === 3) {
+          event.stopImmediatePropagation();
+          node.removeEventListener("touchstart", dropThirdStart, true);
+        }
+      };
+      node.addEventListener("touchstart", dropThirdStart, true);
+    }
   },fault);
   await gesture(page,canvas,3);
   await expect(canvas).toHaveAttribute("data-point-count","28");
@@ -171,4 +180,253 @@ for (const fingers of [2,3] as const) test(`${fingers}-finger ${fingers===2?"und
   await recontactGesture(page,canvas,fingers);
   await expect(canvas).toHaveAttribute("data-point-count",fingers===2?"14":"28");
   expect((await pixels(canvas))===(fingers===2?undone:original),"recontact must edit one stroke and preserve its pixels").toBe(true);
+});
+
+// WebViews can deliver an incomplete pointer stream before the full native touch stream.
+async function reorderedTouch(page: Page, canvas: Locator, fingers: 2 | 3, native: boolean, delay = 20, cancelPointers = false) {
+  await canvas.evaluate(async (node, { fingers, native, delay, cancelPointers }) => {
+    const capture = node.setPointerCapture, release = node.releasePointerCapture;
+    node.setPointerCapture = () => {}; node.releasePointerCapture = () => {};
+    const rect = node.getBoundingClientRect();
+    const pointer = (type: string, id: number) => node.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerType: "touch", pointerId: id, isPrimary: id === 1,
+      button: 0, buttons: type === "pointerup" ? 0 : 1, pressure: 0.5,
+      clientX: rect.x + 45 + id * 30, clientY: rect.y + 80,
+    }));
+    // Only two pointer contacts are delivered, even when the native tap has three.
+    const pointerCount = native ? 2 : fingers;
+    for (let id = 1; id <= pointerCount; id++) pointer("pointerdown", id);
+    for (let id = 1; id <= pointerCount; id++) pointer(cancelPointers ? "pointercancel" : "pointerup", id);
+    if (native) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      const touches = Array.from({ length: fingers }, (_, index) => new Touch({
+        identifier: index + 11, target: node, clientX: rect.x + 75 + index * 30, clientY: rect.y + 80,
+      }));
+      node.dispatchEvent(new TouchEvent("touchstart", {
+        bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches: touches,
+      }));
+      node.dispatchEvent(new TouchEvent("touchend", {
+        bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: touches,
+      }));
+    }
+    node.setPointerCapture = capture; node.releasePointerCapture = release;
+  }, { fingers, native, delay, cancelPointers });
+  // Include the fallback completion window, so a second history edit cannot escape the assertion.
+  await page.waitForTimeout(160);
+}
+
+for (const native of [true, false]) test(
+  native ? "late native touch delivery must commit exactly one history action" : "pointer-only fallback keeps multilevel undo and redo",
+  async ({ page }) => {
+    const screen = await questionnaire(page); await answer(page, screen);
+    await ink(screen.locator("canvas"), true);
+    await screen.getByRole("button", { name: "确认本页书写" }).click();
+    const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+    await ink(canvas, false, 3); const original = await pixels(canvas);
+    await screen.getByRole("button", { name: "撤回上一笔" }).click();
+    await reorderedTouch(page, canvas, 3, native);
+    await expect(canvas).toHaveAttribute("data-point-count", "42");
+    // Delayed native delivery must still claim this gesture without a second history edit.
+    await reorderedTouch(page, canvas, 2, native, 80);
+    await expect(canvas).toHaveAttribute("data-point-count", "28");
+    await reorderedTouch(page, canvas, 2, native);
+    await expect(canvas).toHaveAttribute("data-point-count", "14");
+    await reorderedTouch(page, canvas, 3, native);
+    await expect(canvas).toHaveAttribute("data-point-count", "28");
+    await reorderedTouch(page, canvas, 3, native);
+    await expect(canvas).toHaveAttribute("data-point-count", "42");
+    expect(await pixels(canvas)).toBe(original);
+    await expect(screen.getByRole("button", { name: "恢复上一笔" })).toBeDisabled();
+  },
+);
+
+
+test("native touch completion overrides provisional pointer cancellation only", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 3); const original = await pixels(canvas);
+  await reorderedTouch(page, canvas, 2, false, 0, true);
+  await expect(canvas).toHaveAttribute("data-point-count", "42");
+  await screen.getByRole("button", { name: "撤回上一笔" }).click();
+  await reorderedTouch(page, canvas, 3, true, 20, true);
+  await expect(canvas).toHaveAttribute("data-point-count", "42");
+  expect(await pixels(canvas)).toBe(original);
+});
+
+test("staggered finger release never executes an intermediate undo during redo", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 3); const original = await pixels(canvas);
+  const client = await page.context().newCDPSession(page);
+  const box = (await canvas.boundingBox())!;
+  const contacts = Array.from({ length: 3 }, (_, i) => ({
+    id: i + 1, x: box.x + 55 + i * 35, y: box.y + 80, force: 0.5,
+  }));
+  for (const releaseOrder of [[0, 1, 2], [2, 0, 1]]) {
+    await gesture(page, canvas, 2);
+    await expect(canvas).toHaveAttribute("data-point-count", "28");
+    const intermediateCounts = [];
+    for (let fingers = 1; fingers <= 3; fingers++) {
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: contacts.slice(0, fingers) });
+    }
+    for (const index of releaseOrder.slice(0, 2)) {
+      await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [contacts[index]] });
+      intermediateCounts.push(await count(canvas));
+    }
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    expect(intermediateCounts).toEqual(["28", "28"]);
+    await expect(canvas).toHaveAttribute("data-point-count", "42");
+    expect(await pixels(canvas)).toBe(original);
+  }
+  await client.detach();
+});
+
+
+test("a native undo does not disable pointer-only redo on the next gesture", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 2); const original = await pixels(canvas);
+  await gesture(page, canvas, 2);
+  await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await reorderedTouch(page, canvas, 3, false);
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+  expect(await pixels(canvas)).toBe(original);
+  await screen.getByRole("button", { name: "撤回上一笔" }).click();
+  await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await screen.getByRole("button", { name: "恢复上一笔" }).click();
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+});
+
+
+test("a missing pointerup must not turn two-finger recontact into redo", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 2);
+  await canvas.evaluate((node) => {
+    const dropFirstUp = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      event.stopImmediatePropagation();
+      node.removeEventListener("pointerup", dropFirstUp, true);
+    };
+    node.addEventListener("pointerup", dropFirstUp, true);
+  });
+  await recontactGesture(page, canvas, 2);
+  await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await gesture(page, canvas, 3);
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+});
+
+
+for (const releaseOutside of [false, true]) test(
+  "pointer-only three-finger redo survives capture loss, release outside=" + releaseOutside, async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 2); const original = await pixels(canvas);
+  await reorderedTouch(page, canvas, 2, false);
+  await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await canvas.evaluate((node, releaseOutside) => {
+    let downs = 0;
+    const loseCapture = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      if (++downs === 3) {
+        node.dispatchEvent(new PointerEvent("lostpointercapture", {
+          bubbles: true, pointerType: "touch", pointerId: 1, isPrimary: true,
+        }));
+        node.removeEventListener("pointerdown", loseCapture, true);
+      }
+    };
+    node.addEventListener("pointerdown", loseCapture, true);
+    if (releaseOutside) {
+      const retargetUp = (event: PointerEvent) => {
+        if (event.pointerType !== "touch") return;
+        event.stopImmediatePropagation();
+        document.body.dispatchEvent(new PointerEvent("pointerup", {
+          bubbles: true, pointerType: "touch", pointerId: event.pointerId,
+          clientX: event.clientX, clientY: event.clientY, isPrimary: event.isPrimary,
+        }));
+        if (event.pointerId === 3) node.removeEventListener("pointerup", retargetUp, true);
+      };
+      node.addEventListener("pointerup", retargetUp, true);
+    }
+  }, releaseOutside);
+  await reorderedTouch(page, canvas, 3, false);
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+  expect(await pixels(canvas)).toBe(original);
+});
+
+
+test("Windows pointer-only input draws, undoes and redoes real touch strokes", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await canvas.evaluate((node) => {
+    for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
+      node.addEventListener(type, event => event.stopImmediatePropagation(), true);
+    }
+  });
+  await touchLine(page, canvas); await page.waitForTimeout(160);
+  const points = await count(canvas), original = await pixels(canvas);
+  expect(Number(points)).toBeGreaterThan(2);
+  await gesture(page, canvas, 2); await expect(canvas).toHaveAttribute("data-point-count", "0");
+  await gesture(page, canvas, 3); await expect(canvas).toHaveAttribute("data-point-count", points!);
+  expect(await pixels(canvas)).toBe(original);
+});
+
+
+for (const marginFirst of [false, true]) test("three-finger redo includes a finger on the writing margin, first=" + marginFirst, async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  await ink(canvas, false, 2); const original = await pixels(canvas);
+  await gesture(page, canvas, 2); await expect(canvas).toHaveAttribute("data-point-count", "14");
+  const box = (await canvas.boundingBox())!;
+  const client = await page.context().newCDPSession(page);
+  const contacts = [
+    {id: 1, x: box.x + 60, y: box.y + 90},
+    {id: 2, x: box.x + 110, y: box.y + 90},
+    {id: 3, x: box.x - 6, y: box.y + 90},
+  ];
+  if (marginFirst) contacts.unshift(contacts.pop()!);
+  for (let n=1; n<=3; n++) await client.send("Input.dispatchTouchEvent", {type:"touchStart", touchPoints:contacts.slice(0,n)});
+  await client.send("Input.dispatchTouchEvent", {type:"touchEnd", touchPoints:[]});
+  await client.detach();
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+  expect(await pixels(canvas)).toBe(original);
+});
+
+
+test("history toolbar is above the canvas and shares button, touch and keyboard history", async ({ page }) => {
+  const screen = await questionnaire(page); await answer(page, screen);
+  await ink(screen.locator("canvas"), true);
+  await screen.getByRole("button", { name: "确认本页书写" }).click();
+  const canvas = screen.locator("canvas"); await expect(canvas).toBeVisible();
+  const toolbar = screen.getByRole("toolbar", { name: "笔画历史" });
+  await expect(toolbar).toBeVisible();
+  const toolbarBox=(await toolbar.boundingBox())!, canvasBox=(await canvas.boundingBox())!;
+  expect(toolbarBox.y+toolbarBox.height).toBeLessThanOrEqual(canvasBox.y);
+  await ink(canvas, false, 2); const original = await pixels(canvas);
+  await gesture(page, canvas, 2); await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await toolbar.getByRole("button", {name:"恢复上一笔"}).click();
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+  await expect(toolbar.getByRole("status")).toHaveText("已恢复一笔");
+  expect(await pixels(canvas)).toBe(original);
+  await page.keyboard.press("Control+z"); await expect(canvas).toHaveAttribute("data-point-count", "14");
+  await page.keyboard.press("Control+y"); await expect(canvas).toHaveAttribute("data-point-count", "28");
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("Control+Shift+z");
+  await expect(canvas).toHaveAttribute("data-point-count", "28");
+  expect(await pixels(canvas)).toBe(original);
+  await page.locator(".device-screen").screenshot({path:"artifacts/screenshots/history-toolbar-restored.png"});
 });

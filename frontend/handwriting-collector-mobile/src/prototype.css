@@ -62,7 +62,11 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 16px; font-family: "STKaiti", "
 .assessment-score small { display: block; font-size: 13px; font-weight: 400; }
 .assessment-result a { color: #314b43; text-decoration: underline; }
 
-.writing-actions.with-history { grid-template-columns: 72px 44px 44px minmax(0, 1fr); gap: 6px; }
+.canvas-history-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 40px; flex-shrink: 0; }
+.canvas-history-bar button { min-width: 74px; min-height: 40px; padding: 5px 10px; border: 1px solid #aebbb6; border-radius: 10px; background: #f7f3ea; color: #314b43; font: inherit; font-size: 13px; font-weight: 700; touch-action: manipulation; }
+.canvas-history-bar button:disabled { opacity: .4; }
+.canvas-history-bar button:not(:disabled):active { background: #dce9d9; }
+.canvas-history-bar span { flex: 1; font-size: 11px; color: #557067; text-align: right; line-height: 1.4; }
 .writing-actions.with-history button { font-size: 13px; padding: 0 3px; }
 .writing-actions .secondary-button:disabled { opacity: .4; cursor: default; }
 .native-shell .identity-screen, .native-shell .questionnaire, .native-shell .review-screen { overflow-y: auto; overscroll-behavior: contain; }

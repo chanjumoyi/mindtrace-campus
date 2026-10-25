@@ -73,11 +73,15 @@ When any text-entry control loses focus, dismiss the simulated keyboard. If the 
 ## Collector interaction decisions (2026-10-25)
 
 - Keep the official WHO-5 five items and scoring; questionnaire heading/header is 状态问卷. Do not show the introductory score explanation or skip/prefer-not-to-answer controls. Require a selected answer before proceeding.
-- Copy and free-writing canvases support a two-finger tap to undo one whole stroke and a three-finger tap to redo it; show 接触画布后开始书写 · 双指点击撤回，三指点击取消 persistently above the canvas. Do not replace it with dynamic input-mode warnings. Input capability metadata and acquisition quality checks remain active.
+- Copy and free-writing canvases support a two-finger tap to undo one whole stroke and a three-finger tap to redo it; show 接触画布后开始书写 · 双指点击撤回，三指点击恢复 persistently above the canvas. Do not replace it with dynamic input-mode warnings. Input capability metadata and acquisition quality checks remain active.
 - Multitouch gestures must not leave acquisition points, and history edits must rebuild the canvas and derived quality metrics. New ink and clear invalidate redo history. Pressure warmup remains outside this gesture feature.
 
 ## Android gesture compatibility follow-up
 
-- Prefer native TouchEvent targetTouches for gesture finger counts and completion. Pointer capture loss alone does not cancel an active native touch sequence; genuine touchcancel still does. Keep the PointerEvent fallback for environments without TouchEvents.
-- Keep explicit 撤回/恢复 buttons on copy/free-writing pages for devices whose system gestures consume three-finger input. Both controls use the same stroke history and metrics as touch gestures.
+- Prefer native TouchEvent snapshots for gesture finger counts and completion. Pointer capture loss alone never ends or cancels a touch sequence, including PointerEvent-only browsers. Track the actual pointerup/pointercancel on window if capture loss redirects release outside the canvas; genuine cancellation still cancels. Keep the PointerEvent fallback for environments without TouchEvents.
+- Keep explicit 撤回/恢复 buttons directly above the canvas on copy/free-writing pages so they remain easy to find when three-finger input is unavailable. Show the result of history operations beside them. Buttons, two/three-finger taps and Ctrl/Cmd+Z, Ctrl+Y / Ctrl/Cmd+Shift+Z share the same stroke history and metrics.
 - Android identity, questionnaire and review content must remain scrollable on small/resized viewports. Tests mocking the Capacitor bridge verify API contracts only; they do not substitute for Xiaomi/HyperOS device acceptance.
+
+- Each touch session commits at most one history action after its final contact lifts. Choose event ownership per session, never permanently disable the PointerEvent fallback after observing native input. Infer native simultaneous contact counts from start, move and end snapshots, including just-released changedTouches; do not accumulate stale pointer IDs after native input takes over. Allow 120 ms for late native delivery before committing a pointer-only gesture. Keep rapid separate taps separate and cancel pending completion on clear/unmount.
+
+- Recognize touch chords across the current writing screen, including the canvas border and non-interactive margins; ignore buttons, fields and links. Count all eligible active touches, not only targetTouches for the canvas, and wait for the last eligible finger to lift.
