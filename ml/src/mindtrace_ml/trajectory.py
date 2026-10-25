@@ -2,8 +2,21 @@
 
 import numpy as np
 
-VERSION = "ouhd-trajectory-v1"
+from mindtrace_ml.data import config
+
+VERSION = "ouhd-trajectory-v1.1"
 CHANNELS = ("dx", "dy", "dt_seconds", "pressure", "pen_state")
+
+
+def pressure_parameters(pressure_range=None):
+    """Default range comes only from the source config; other devices inject theirs."""
+    bounds = np.asarray(
+        config()["ouhd_l"]["pressure_range"] if pressure_range is None else pressure_range,
+        dtype=float,
+    )
+    if bounds.shape != (2,) or not np.isfinite(bounds).all() or bounds[1] <= bounds[0]:
+        raise ValueError("pressure range must have two finite increasing bounds")
+    return dict(range=bounds.tolist(), offset=float(bounds[0]), scale=float(bounds[1] - bounds[0]))
 
 
 def browser_pressure_mask(pressure, pointer_types, pen_down):
@@ -87,16 +100,21 @@ def fit_coordinates(training_points):
     )
 
 
-def transform(points, coordinate_map):
+def transform(points, coordinate_map, pressure_range=None):
+    pressure = pressure_parameters(pressure_range)
     p, spans, quality = repair(points)
     xy = (p[:, :2] - coordinate_map["origin"]) / coordinate_map["scale"]
     dt = np.r_[0, np.diff(p[:, 3])] / 1000
     boundary = np.r_[True, np.diff(p[:, 4]) != 0]
     delta = np.vstack([np.zeros(2), np.diff(xy, axis=0)])
-    values = np.column_stack([delta, dt, np.nan_to_num(p[:, 2]) / 4095, p[:, 4]])
+    values = np.column_stack(
+        [delta, dt, (np.nan_to_num(p[:, 2]) - pressure["offset"]) / pressure["scale"], p[:, 4]]
+    )
     mask = np.ones_like(values, dtype=bool)
     mask[0, :3] = False
-    mask[:, 3] = np.isfinite(p[:, 2]) & (p[:, 2] >= 0) & (p[:, 2] <= 4095)
+    mask[:, 3] = (
+        np.isfinite(p[:, 2]) & (p[:, 2] >= pressure["range"][0]) & (p[:, 2] <= pressure["range"][1])
+    )
     values[~mask] = 0
     speed_valid = (dt > 0) & ~boundary & (p[:, 4] == 1)
     speed = np.divide(np.linalg.norm(delta, axis=1), dt, out=np.zeros(len(p)), where=speed_valid)
@@ -118,6 +136,9 @@ def transform(points, coordinate_map):
         speed_valid=speed_valid,
         quality=quality,
         version=VERSION,
+        pressure_range=tuple(pressure["range"]),
+        pressure_offset=pressure["offset"],
+        pressure_scale=pressure["scale"],
     )
 
 
@@ -158,8 +179,9 @@ def windows(record, duration_ms=2000, stride_ms=2000):
             continue
         result = {
             k: v[indices].copy()
+            if isinstance(v, np.ndarray) and v.ndim > 0 and len(v) == len(t)
+            else v
             for k, v in record.items()
-            if isinstance(v, np.ndarray) and len(v) == len(t)
         }
         # Retain source deltas and mark first delta invalid: it refers outside window.
         result["feature_mask"][0, :3] = False
@@ -173,19 +195,35 @@ def windows(record, duration_ms=2000, stride_ms=2000):
 
 
 def pad(window, length):
+    """Pad every point array to length, preserving metadata and the input window.
+
+    Model values use zero, validity/missing/augmentation flags use false, index
+    arrays use -1, auxiliary floating measurements use NaN. Only padding_mask
+    is true on padding. Scalar metadata and the pressure/time-bound metadata
+    vectors stay unchanged, including their ndarray form after NPZ loading.
+    """
     n = len(window["values"])
     if length < n:
         raise ValueError("padding must not truncate")
     result = dict(window)
-    for name in (
-        "values",
-        "feature_mask",
-        "measurement_missing",
-        "augmentation_mask",
-        "stroke_boundary",
-        "padding_mask",
-    ):
-        array = window[name]
-        result[name] = np.pad(array, [(0, length - n)] + [(0, 0)] * (array.ndim - 1))
+    for name, array in window.items():
+        if not isinstance(array, np.ndarray):
+            continue
+        if array.ndim == 0 or name in ("pressure_range", "time_bounds_ms"):
+            result[name] = array.copy()
+            continue
+        if len(array) != n:
+            raise ValueError(f"point array length mismatch: {name}")
+        if name == "values" or np.issubdtype(array.dtype, np.bool_):
+            fill = 0
+        elif np.issubdtype(array.dtype, np.integer):
+            fill = -1
+        elif np.issubdtype(array.dtype, np.floating):
+            fill = np.nan
+        else:
+            raise ValueError(f"unsupported point array type: {name}")
+        result[name] = np.pad(
+            array, [(0, length - n)] + [(0, 0)] * (array.ndim - 1), constant_values=fill
+        )
     result["padding_mask"][n:] = True
     return result

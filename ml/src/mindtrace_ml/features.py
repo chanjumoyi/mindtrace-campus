@@ -2,14 +2,16 @@
 
 import numpy as np
 
-VERSION = "statistics-v1-pauses-200-500-1000ms"
+VERSION = "statistics-v1.1-pauses-200-500-1000ms"
 
 
 def extract(record):
     xy, p = record["normalized_xy"], record["raw_points"]
     speed = record["speed"][record["speed_valid"]]
     down = p[:, 4] == 1
-    pressure = p[down & record["feature_mask"][:, 3], 2] / 4095
+    pressure = (p[down & record["feature_mask"][:, 3], 2] - record["pressure_offset"]) / record[
+        "pressure_scale"
+    ]
     dt = np.r_[0, np.diff(p[:, 3])] / 1000
     distance = np.linalg.norm(np.diff(xy, axis=0), axis=1)
     valid_edge = down[1:] & down[:-1] & ~record["stroke_boundary"][1:]
@@ -101,6 +103,9 @@ def plot(record, destination):
     axes[2].plot(
         t, np.where(record["feature_mask"][:, 3], record["values"][:, 3], np.nan), linewidth=0.5
     )
-    axes[2].set(xlabel="Relative seconds", ylabel="Source pressure / 4095")
+    axes[2].set(
+        xlabel="Relative seconds",
+        ylabel=f"(Source pressure - {record['pressure_offset']:g}) / {record['pressure_scale']:g}",
+    )
     fig.savefig(destination, dpi=130)
     plt.close(fig)
