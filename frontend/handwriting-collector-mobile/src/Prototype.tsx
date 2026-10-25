@@ -417,7 +417,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     contacts: Map<number, { x: number; y: number }>;
     started: number; maxFingers: number; moved: boolean; cancelled: boolean; pointerCancelled: boolean;
     checkpoint: Point[]; redoCheckpoint: Point[][]; rolledBack: boolean;
-    native: boolean; touchOrigins: Map<number, { x: number; y: number }>;
+    native: boolean; nativeContacts: Set<number>; touchOrigins: Map<number, { x: number; y: number }>;
   } | null>(null);
   const pendingTouchCompletion = useRef<{ timer: number; finish: () => void } | null>(null);
   const cancelPendingTouchCompletion = () => {
@@ -558,7 +558,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     if (!touchSession.current) touchSession.current = {
       contacts: new Map(), started: timestamp, maxFingers: 0, moved: false,
       cancelled: drawing.current, checkpoint: [...points.current], redoCheckpoint: [...redoStrokes.current], rolledBack: false,
-      native: false, pointerCancelled: false, touchOrigins: new Map(),
+      native: false, pointerCancelled: false, nativeContacts: new Set(), touchOrigins: new Map(),
     };
     return touchSession.current;
   };
@@ -647,17 +647,26 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     const surface = canvas.closest(".writing-screen") ?? canvas;
     const isGestureTarget = (target: EventTarget | null) => target instanceof Element
       && surface.contains(target) && !target.closest("button, input, select, textarea, a, [role='button']");
-    const activeTouches = (event: TouchEvent) => Array.from(event.touches).filter(touch => isGestureTarget(touch.target));
     const observeTouches = (event: TouchEvent) => {
       const session = touchSession.current;
       if (!session) return;
       cancelPendingTouchCompletion();
       session.native = true;
-      // The end event still describes the contacts immediately before release.
-      // Include its changed touches so a missed third touchstart cannot become undo.
-      const reported = new Map(activeTouches(event).map((touch) => [touch.identifier, touch]));
+
+      // Keep a native contact set from the browser's complete TouchList. Pointer
+      // events are only a compatibility signal here: Android WebView can omit a
+      // pointerdown/up or deliver it after the native touch snapshot. Using
+      // event.touches for completion also avoids treating a staggered release as
+      // the end of the whole three-finger chord.
+      const knownTouch = (touch: Touch) => isGestureTarget(touch.target)
+        || session.nativeContacts.has(touch.identifier)
+        || session.touchOrigins.has(touch.identifier);
+      const reported = new Map<number, Touch>();
+      for (const touch of Array.from(event.touches)) {
+        if (knownTouch(touch)) reported.set(touch.identifier, touch);
+      }
       for (const touch of Array.from(event.changedTouches)) {
-        if (isGestureTarget(touch.target)) reported.set(touch.identifier, touch);
+        if (knownTouch(touch)) reported.set(touch.identifier, touch);
       }
       session.maxFingers = Math.max(session.maxFingers, reported.size);
       for (const touch of reported.values()) {
@@ -665,6 +674,9 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
         if (origin && Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 12) session.moved = true;
         if (!origin) session.touchOrigins.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
       }
+      session.nativeContacts = new Set(
+        Array.from(event.touches).filter(knownTouch).map((touch) => touch.identifier),
+      );
       rollbackTouchPreview();
       if (session.maxFingers > 1 && event.cancelable) event.preventDefault();
     };
@@ -679,7 +691,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       if (!session) return;
       observeTouches(event);
       session.cancelled ||= event.type === "touchcancel";
-      if (activeTouches(event).length === 0) {
+      if (session.nativeContacts.size === 0) {
         if (activePointerId.current !== null && session.contacts.has(activePointerId.current)) {
           drawing.current = false; activePointerId.current = null;
         }
