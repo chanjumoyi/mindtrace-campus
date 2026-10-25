@@ -48,6 +48,21 @@ async function gesture(page:Page,canvas:Locator,fingers:number,mode:"tap"|"drag"
   await client.send("Input.dispatchTouchEvent",{type:mode==="cancel"?"touchCancel":"touchEnd",touchPoints:[]});
   await client.detach();
 }
+async function recontactGesture(page:Page,canvas:Locator,fingers:2|3) {
+  const box=(await canvas.boundingBox())!;
+  const client=await page.context().newCDPSession(page);
+  const contacts=Array.from({length:fingers},(_,i)=>({id:i+1,x:box.x+50+i*35,y:box.y+80,radiusX:4,radiusY:4,force:0.5}));
+  for(let count=1;count<=fingers;count++)await client.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:contacts.slice(0,count)});
+  // CDP touchEnd lists the contacts to lift. Keep the last finger down so this remains one session.
+  await client.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:contacts.slice(0,-1)});
+  const active=[contacts[fingers-1]];
+  for(let i=0;i<fingers-1;i++) {
+    active.push({...contacts[i],id:fingers+i+1});
+    await client.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[...active]});
+  }
+  await client.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
+  await client.detach();
+}
 const count=(canvas:Locator)=>canvas.getAttribute("data-point-count");
 const pixels=(canvas:Locator)=>canvas.evaluate((node:HTMLCanvasElement)=>node.toDataURL());
 
@@ -141,4 +156,19 @@ for (const fault of ["missing-third-pointer", "lost-capture"] as const) test(`th
   await gesture(page,canvas,3);
   await expect(canvas).toHaveAttribute("data-point-count","28");
   expect((await pixels(canvas))===original).toBe(true);
+});
+
+for (const fingers of [2,3] as const) test(`${fingers}-finger ${fingers===2?"undo":"redo"} counts simultaneous contacts after fingers lift and recontact`,async({page})=>{
+  const screen=await questionnaire(page);await answer(page,screen);
+  let canvas=screen.locator("canvas");await ink(canvas,true);await screen.getByRole("button",{name:"确认本页书写"}).click();
+  canvas=screen.locator("canvas");await expect(canvas).toBeVisible();
+  await ink(canvas,false,2);const original=await pixels(canvas);
+  await gesture(page,canvas,2);await expect(canvas).toHaveAttribute("data-point-count","14");
+  const undone=await pixels(canvas);
+  if(fingers===2) {
+    await gesture(page,canvas,3);await expect(canvas).toHaveAttribute("data-point-count","28");
+  }
+  await recontactGesture(page,canvas,fingers);
+  await expect(canvas).toHaveAttribute("data-point-count",fingers===2?"14":"28");
+  expect((await pixels(canvas))===(fingers===2?undone:original),"recontact must edit one stroke and preserve its pixels").toBe(true);
 });

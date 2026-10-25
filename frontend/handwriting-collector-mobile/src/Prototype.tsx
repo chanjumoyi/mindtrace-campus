@@ -579,7 +579,8 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     if (!gesturesEnabled || event.pointerType !== "touch") return false;
     const session = beginTouchSession(event.timeStamp);
     session.contacts.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    session.maxFingers = Math.max(session.maxFingers, session.contacts.size);
+    // Native TouchEvents own the finger count; pointer delivery can be incomplete.
+    if (!session.native) session.maxFingers = Math.max(session.maxFingers, session.contacts.size);
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     if (session.maxFingers > 1) {
@@ -600,11 +601,12 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     if (event.pointerType !== "touch" || !session) return false;
     const suppressed = session.maxFingers > 1 || session.cancelled;
     touchMove(event);
+    // Retire each contact even when native TouchEvents own gesture completion.
+    session.contacts.delete(event.pointerId);
     // TouchEvents carry the whole contact list on Android. A lost pointer capture
     // or a missing secondary pointer event must not prematurely cancel the gesture.
     if (session.native) return suppressed;
     session.cancelled ||= cancelled;
-    session.contacts.delete(event.pointerId);
     if (session.contacts.size === 0) completeTouchSession(event.timeStamp);
     return suppressed;
   };
