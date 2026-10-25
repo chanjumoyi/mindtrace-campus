@@ -30,6 +30,12 @@ ml/checkpoints/
 ml/experiments/
 ml/runs/
 ml/reports/
+ml/raw/
+ml/processed/
+ml/splits/
+ml/local/
+/pip-*/
+/tmp*/
 ml/**/*.pt
 ml/**/*.pth
 ml/**/*.ckpt
