@@ -120,6 +120,8 @@ def point_windows(record, size=256):
         result["feature_mask"][0, :3] = False
         result["measurement_missing"][0, :3] = True
         result["stroke_boundary"][0] = True
+        result["speed_valid"][0] = False
+        result["speed"][0] = 0
         result["source_indices"] = np.arange(start, stop)
         result["time_bounds_ms"] = (
             float(record["relative_ms"][start]),

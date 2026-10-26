@@ -55,3 +55,6 @@ ml/.venv/Scripts/python ml/scripts/plot_window_study.py ml/experiments/window-st
 步骤 3 的 v3 复核接入 v1.1 来源契约：重采样、保真度和 debug 窗口共享实际压力量程；已有 padding 不计入有效序列长度；无效目标在 Huber 运算前剔除，验证损失按有效遮盖目标数量汇总。候选比较还要求至少 99% 有效压力可比较，并按窗口并集与连续落笔时间边的精确重叠计算覆盖率。
 
 每个冒烟检查点包含运行/代码/清单指纹、真实窗口内容指纹、划分、环境、模型、预处理和训练配置；`checkpoint.load_checked()` 先在 CPU 校验契约，兼容后才恢复模型、优化器和随机状态。旧版或不同来源/配置会明确拒绝，原文件保持不变。每窗原始记录、范围和插值映射存于私有 `window-index.json`；`history.json` 保存训练和验证汇总，`best-smoke.pt` 是本次唯一一次验证的冒烟检查点，不代替正式预训练的多轮最佳编码器。
+
+
+PR #4 复核后，`ml/ruff.toml` 继承仓库规则并固定 Python 3.10，直接运行 `ruff check ml`、`ruff format --check ml` 即可。`smoke.records_per_writer` 按每个选中 writer 在 manifest 中的顺序取指定条数，writer 仍按 ID 排序；数量不足会在读取测量前拒绝。`selection.aggregation`、`eligible_order`、`fallback`、`coverage_policy` 和 `interpolation` 是仅支持当前取值的固定策略选择器，程序会逐项核验，不支持的配置明确报错；`purpose` 仅为说明。更改这些策略需要实现对应算法并重新验收，不能只改预登记文本。manifest 的 train/val 来源集合及每条 writer/split 必须与 accepted inventory 完全一致，否则在读取测量前失败。
