@@ -1,0 +1,22 @@
+name: ML synthetic tests
+on:
+  pull_request:
+    paths: ['ml/**', '.github/workflows/ml-synthetic-tests.yml']
+  push:
+    branches: [moyi]
+    paths: ['ml/**', '.github/workflows/ml-synthetic-tests.yml']
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-flags: ['', '-O']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: python -m pip install numpy==1.26.4 matplotlib==3.10.9
+      - run: python ${{ matrix.python-flags }} -m unittest discover -s ml/tests -v

@@ -1,0 +1,7 @@
+{
+  "ouhd_l": {"root": "data/raw/ouhd_l", "version": "1.0 core", "source_url": "https://doi.org/10.5281/zenodo.20642162", "source_record": "SOURCE.md", "license_file": "LICENSE", "permission": "local CC-BY-4.0 declaration; verify LICENSE before redistribution", "epoch_ms": false, "coordinate_units": "tablet units; physical mapping unavailable", "pressure_range": [0, 4095]},
+  "casia_ondo": {"root": null, "version": null, "permission": "not_available"},
+  "emothaw": {"root": "data/raw/emothaw/kaggle-zazadata-v1", "version": "Kaggle third-party mirror v1; official release unauthenticated", "source_url": "https://www.kaggle.com/datasets/zazadata/emothaw", "source_record": "validation.json", "permission": "internal adaptation only; written authorization pending"},
+  "mindtrace": {"root": "data/raw/mindtrace", "version": null, "permission": "not_available"},
+  "quickdraw": {"root": "data/raw/quickdraw", "version": "local representative subset; see manifest.json", "source_record": "manifest.json", "permission": "optional; excluded from training"}
+}
