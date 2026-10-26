@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
+
 from mindtrace_ml.contracts import run_metadata, validate_features, validate_saved_window
 from mindtrace_ml.data import ML_ROOT, config, manifest, read_points, sha256
 from mindtrace_ml.features import extract, plot

@@ -56,13 +56,15 @@ ml/.venv/Scripts/python ml/scripts/plot_window_study.py ml/experiments/window-st
 
 每个冒烟检查点包含运行/代码/清单指纹、真实窗口内容指纹、划分、环境、模型、预处理和训练配置；`checkpoint.load_checked()` 先在 CPU 校验契约，兼容后才恢复模型、优化器和随机状态。旧版或不同来源/配置会明确拒绝，原文件保持不变。每窗原始记录、范围和插值映射存于私有 `window-index.json`；`history.json` 保存训练和验证汇总，`best-smoke.pt` 是本次唯一一次验证的冒烟检查点，不代替正式预训练的多轮最佳编码器。
 
+PR #4 复核后，`ml/ruff.toml` 继承仓库规则并固定 Python 3.10，直接运行 `ruff check ml`、`ruff format --check ml` 即可。`smoke.records_per_writer` 按每个选中 writer 在 manifest 中的顺序取指定条数，writer 仍按 ID 排序；数量不足会在读取测量前拒绝。`selection.aggregation`、`eligible_order`、`fallback`、`coverage_policy` 和 `interpolation` 是仅支持当前取值的固定策略选择器，程序会逐项核验，不支持的配置明确报错；`purpose` 仅为说明。更改这些策略需要实现对应算法并重新验收，不能只改预登记文本。manifest 的 train/val 来源集合及每条 writer/split 必须与 accepted inventory 完全一致，否则在读取测量前失败。
+
 ## 步骤 4：正式 OUHD-L 自监督预训练
 
 正式入口读取已通过验收的 v3 窗口研究及其训练集标准化，不重新选窗；参数见 `configs/pretraining.json`。从仓库根运行：
 
 ```powershell
 ml/.venv/Scripts/python ml/scripts/04_pretrain.py --study-run ml/experiments/window-study/20261026T053254Z-373b3ce3 --output ml/experiments/pretraining/ouhd-formal-v1 --cpu-affinity 0xffff0000
-# 进程中断后，从上一个完整 epoch 恢复；来源、代码、配置和缓存必须一致：
+# 仅来源、代码、配置和缓存均未变化时，从上一个完整 epoch 恢复：
 ml/.venv/Scripts/python ml/scripts/04_pretrain.py --study-run ml/experiments/window-study/20261026T053254Z-373b3ce3 --output ml/experiments/pretraining/ouhd-formal-v1 --cpu-affinity 0xffff0000 --resume
 ml/.venv/Scripts/python ml/scripts/plot_pretraining.py ml/experiments/pretraining/ouhd-formal-v1
 ```
@@ -72,3 +74,5 @@ ml/.venv/Scripts/python ml/scripts/plot_pretraining.py ml/experiments/pretrainin
 每轮保存原子写入的 `last.pt`、最佳 `best.pt` 和 `history.json`；保存优化器、随机状态、更新游标及来源/实现/环境契约。恢复从完整 epoch 边界继续，未完成 epoch 重跑。训练完成后先导出 `encoder.pt` 和 `frozen.json`，再读独立测试测量，仅评价一次固定遮盖的总体及逐通道 Huber、MAE、RMSE（训练标准化单位）。`test-started.json` 在读取测试之前落盘；若测试评价中断，程序拒绝自动重评，需先复核中断原因。测试结果不参与选模。
 
 完整窗口及原始跨度/插值映射、划分、标准化、权重、测试指标和图均位于忽略的运行目录，不提交。重建指标仅表示轨迹表征能力，不构成 WHO-5 预测有效性的证据。正式运行验收见 `docs/pretraining.md`。
+
+上方 `ouhd-formal-v1` 是已完成的历史运行示例；新训练请另取输出目录。合并 PR #4 及检查规范修复后，当前代码应严格拒绝直接恢复该历史运行，不能通过改写元数据绕过指纹检查。已有编码器的增量核验见 `docs/pretraining.md`，无需重新训练或重复测试集评价。

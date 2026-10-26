@@ -12,6 +12,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
 import torch
+
 from mindtrace_ml.checkpoint import fingerprint
 from mindtrace_ml.data import ML_ROOT, manifest, read_points, sha256
 from mindtrace_ml.pretraining import evaluate, train, write_json
@@ -105,7 +106,10 @@ def cached(path):
     with np.load(path, allow_pickle=False) as data:
         offsets = data["offsets"]
         arrays = {k: data[k] for k in ("values", "feature_mask", "stroke_boundary")}
-    return [{k: v[a:b] for k, v in arrays.items()} for a, b in zip(offsets[:-1], offsets[1:])]
+    return [
+        {k: v[a:b] for k, v in arrays.items()}
+        for a, b in zip(offsets[:-1], offsets[1:], strict=True)
+    ]
 
 
 def main():

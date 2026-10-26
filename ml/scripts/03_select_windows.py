@@ -13,6 +13,7 @@ from pathlib import Path
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
+
 from mindtrace_ml.checkpoint import environment, fingerprint
 from mindtrace_ml.contracts import run_metadata
 from mindtrace_ml.data import ML_ROOT, manifest, read_points, sha256
@@ -21,6 +22,62 @@ from mindtrace_ml.runtime import cpu_affinity
 from mindtrace_ml.smoke import execute
 from mindtrace_ml.trajectory import CHANNELS, Standardizer, pressure_parameters
 from mindtrace_ml.windowing import VERSION, point_windows, prepare, preservation, time_windows
+
+# These named policies have one implemented variant. Reject edits instead of
+# recording an unsupported policy as if it had actually run.
+FIXED_POLICIES = {
+    "aggregation": "worst writer mean of record p95 errors and record coverage",
+    "eligible_order": ["fewest points", "largest stride", "longest minimum short window"],
+    "fallback": "fail without freezing if no candidate passes",
+    "coverage_policy": "exact union overlap with valid continuous pen-down time edges; no gap or pen-up weighting",
+    "interpolation": "linear within continuous pen-down segment only; pen-up endpoints only",
+}
+
+
+def validate_plan(plan):
+    for key, supported in FIXED_POLICIES.items():
+        actual = (
+            plan["selection"].get(key)
+            if key in ("aggregation", "eligible_order", "fallback")
+            else plan.get(key)
+        )
+        if actual != supported:
+            raise ValueError(f"unsupported study policy: {key}")
+    for key in ("train_writers", "val_writers", "records_per_writer", "windows_per_record"):
+        value = plan["smoke"].get(key)
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"positive integer required: smoke.{key}")
+
+
+def validate_manifest(records, reference):
+    ids = [r["source_id"] for r in records]
+    if len(ids) != len(set(ids)) or set(ids) != set(reference):
+        raise ValueError("development manifest differs from accepted inventory source set")
+    for record in records:
+        previous = reference[record["source_id"]]
+        if record["split"] not in ("train", "val") or any(
+            record[k] != previous[k] for k in ("split", "writer_id")
+        ):
+            raise ValueError(
+                "development manifest participant/split differs from accepted inventory"
+            )
+
+
+def smoke_sources(records, plan):
+    """Sorted writers, manifest-order records; no trajectory access or test selection."""
+    selected = set()
+    count = plan["smoke"]["records_per_writer"]
+    for split, key in (("train", "train_writers"), ("val", "val_writers")):
+        grouped = defaultdict(list)
+        for record in records:
+            if record["split"] == split:
+                grouped[record["writer_id"]].append(record["source_id"])
+        writers = sorted(grouped)[: plan["smoke"][key]]
+        if len(writers) != plan["smoke"][key] or any(len(grouped[w]) < count for w in writers):
+            raise ValueError("insufficient writers/records for predeclared smoke plan")
+        for writer in writers:
+            selected.update(grouped[writer][:count])
+    return selected
 
 
 def read_development(record, reference):
@@ -117,6 +174,7 @@ def main():
         if r["split"] in ("train", "val")
     }
     plan = json.loads((ML_ROOT / "configs/window-study.json").read_text())
+    validate_plan(plan)
     target = ML_ROOT / "configs/preprocessing-frozen.json"
     previous = json.loads(target.read_text()) if target.exists() else None
     if (
@@ -156,6 +214,8 @@ def main():
     )
     (output / "run.json").write_text(json.dumps(metadata, indent=2))
     records = [r for r in manifest() if r["split"] in ("train", "val")]
+    validate_manifest(records, reference)
+    selected_sources = smoke_sources(records, plan)
     metadata["development_manifest_sha256"] = fingerprint(
         [{k: r[k] for k in ("source_id", "writer_id", "split")} for r in records]
     )
@@ -227,13 +287,6 @@ def main():
     selected = select(candidates, plan)
     print(f"selected engineering candidate: {selected['id']}", flush=True)
     # Refit channel statistics for the selected rate using every official train record.
-    selected_training = {}
-    for split, count in (
-        ("train", plan["smoke"]["train_writers"]),
-        ("val", plan["smoke"]["val_writers"]),
-    ):
-        participants = sorted({r["writer_id"] for r in records if r["split"] == split})[:count]
-        selected_training[split] = {writer: None for writer in participants}
     cache = []
 
     def train_records():
@@ -250,11 +303,7 @@ def main():
                     writer_id=r["writer_id"],
                 )
             )
-            if (
-                r["writer_id"] in selected_training["train"]
-                and selected_training["train"][r["writer_id"]] is None
-            ):
-                selected_training["train"][r["writer_id"]] = r["source_id"]
+            if r["source_id"] in selected_sources:
                 cache.append(("train", r, points, sampled))
             if index % 200 == 0:
                 print(f"train-only channel fit {index + 1}/1911", flush=True)
@@ -277,13 +326,8 @@ def main():
         )
     )
     for r in records:
-        if (
-            r["split"] == "val"
-            and r["writer_id"] in selected_training["val"]
-            and selected_training["val"][r["writer_id"]] is None
-        ):
+        if r["split"] == "val" and r["source_id"] in selected_sources:
             points, _ = read_development(r, reference)
-            selected_training["val"][r["writer_id"]] = r["source_id"]
             cache.append(
                 (
                     "val",

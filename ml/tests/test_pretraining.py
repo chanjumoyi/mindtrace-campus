@@ -10,6 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
 import torch
+
 from mindtrace_ml import pretraining
 from mindtrace_ml.model import BiGRU, collate, mask_batch, masked_huber, target_mask
 
