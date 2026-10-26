@@ -11,12 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
+from mindtrace_ml.contracts import run_metadata, validate_features, validate_saved_window
 from mindtrace_ml.data import ML_ROOT, config, manifest, read_points, sha256
 from mindtrace_ml.features import extract, plot
 from mindtrace_ml.runtime import cpu_affinity
 from mindtrace_ml.trajectory import (
     Standardizer,
     fit_coordinates,
+    pressure_parameters,
     repair,
     transform,
     windows,
@@ -26,12 +28,16 @@ from mindtrace_ml.trajectory import (
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--write-arrays", action="store_true")
+    parser.add_argument("--window-ms", type=int, default=2000)
+    parser.add_argument("--stride-ms", type=int, default=2000)
     parser.add_argument("--cpu-affinity", type=lambda value: int(value, 0), default=None)
     parser.add_argument(
         "--sample-arrays", action="store_true", help="save one window per official split"
     )
     args = parser.parse_args()
     affinity = cpu_affinity(args.cpu_affinity)
+    pressure = pressure_parameters()
+    metadata = run_metadata(args.window_ms, args.stride_ms, pressure)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
     output = ML_ROOT / "data/processed/ouhd_l-v1" / run_id
     output.mkdir(parents=True, exist_ok=False)
@@ -58,10 +64,19 @@ def main():
 
     coords = fit_coordinates(training())
     print("training coordinate map fitted", flush=True)
-    scaler = Standardizer().fit(("train", transform(p, coords)) for _, p in training())
+    scaler = Standardizer().fit(
+        ("train", transform(p, coords, pressure["range"])) for _, p in training()
+    )
     (output / "normalization.json").write_text(
         json.dumps(
-            dict(coordinates=coords, mean=scaler.mean.tolist(), scale=scaler.scale.tolist()),
+            dict(
+                **metadata,
+                version=metadata["trajectory_version"],
+                normalization_channels=metadata["channels"][:4],
+                coordinates=coords,
+                mean=scaler.mean.tolist(),
+                scale=scaler.scale.tolist(),
+            ),
             indent=2,
         )
     )
@@ -76,31 +91,35 @@ def main():
             points += len(raw)
             duplicate = bool((np.diff(raw[:, 3]) == 0).any())
             duplicate_files += duplicate
-            trajectory = transform(raw, coords)
+            trajectory = transform(raw, coords, pressure["range"])
             features = extract(trajectory)
-            assert np.isfinite(list(features["values"].values())).all()
+            validate_features(features)
             merged += trajectory["quality"]["merged_points"]
             transitions += trajectory["quality"]["zero_dt_transitions"]
             count = 0
-            for count, window in enumerate(windows(trajectory), 1):
+            for count, window in enumerate(windows(trajectory, args.window_ms, args.stride_ms), 1):
                 if args.write_arrays or (args.sample_arrays and r["split"] not in array_samples):
                     folder = output / r["split"] / str(index)
                     folder.mkdir(parents=True, exist_ok=True)
                     window["values"] = scaler.apply(window["values"], window["feature_mask"])
                     np.savez_compressed(
                         folder / f"{count}.npz",
-                        **window,
+                        **{
+                            key: json.dumps(value) if isinstance(value, dict) else value
+                            for key, value in window.items()
+                        },
                         dataset="ouhd_l",
-                        schema_version="trajectory-v1",
+                        schema_version=metadata["trajectory_version"],
+                        features_version=metadata["features_version"],
+                        window_ms=metadata["window_ms"],
+                        stride_ms=metadata["stride_ms"],
                         writer_id=r["writer_id"],
                         split=r["split"],
                         source_id=r["source_id"],
                         source_sha256=before[r["source_id"]],
-                        epoch_available=False,
                     )
                     with np.load(folder / f"{count}.npz", allow_pickle=False) as saved:
-                        assert saved["values"].shape[1] == 5
-                        assert np.isfinite(saved["values"]).all()
+                        validate_saved_window(saved, metadata)
                     array_samples.add(r["split"])
             if duplicate and sampled < 6:
                 plot(trajectory, output / f"duplicate-sample-{sampled}.png")
@@ -124,6 +143,7 @@ def main():
             print(f"processed {index}/{len(records)}", flush=True)
     unchanged = all(sha256(r["path"]) == before[r["source_id"]] for r in records)
     summary = dict(
+        **metadata,
         run_id=run_id,
         status="passed" if unchanged and not failures else "needs_review",
         cpu_affinity=affinity,
