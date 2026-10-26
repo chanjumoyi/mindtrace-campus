@@ -15,7 +15,13 @@ import torch
 
 from mindtrace_ml.checkpoint import fingerprint
 from mindtrace_ml.data import ML_ROOT, manifest, read_points, sha256
-from mindtrace_ml.pretraining import evaluate, train, write_json
+from mindtrace_ml.pretraining import (
+    complete_evaluation,
+    evaluate,
+    resume_completed,
+    train,
+    write_json,
+)
 from mindtrace_ml.runtime import cpu_affinity
 from mindtrace_ml.trajectory import Standardizer
 from mindtrace_ml.windowing import VERSION, prepare, time_windows
@@ -120,8 +126,6 @@ def main():
     parser.add_argument("--cpu-affinity", type=lambda v: int(v, 0))
     args = parser.parse_args()
     affinity = cpu_affinity(args.cpu_affinity)
-    if not torch.cuda.is_available():
-        raise RuntimeError("formal run requires CUDA")
     study = args.study_run.resolve()
     summary = load_json(study / "summary.json")
     frozen = load_json(ML_ROOT / "configs/preprocessing-frozen.json")
@@ -169,9 +173,19 @@ def main():
         for name, digest in previous["cache_sha256"].items():
             if sha256(output / name) != digest:
                 raise ValueError("resume cache changed")
+        if resume_completed(output, config, previous):
+            print(
+                "formal run already evaluated; frozen files preserved, completion metadata checked",
+                flush=True,
+            )
+            return
+        if not torch.cuda.is_available():
+            raise RuntimeError("formal run requires CUDA")
         data = {s: cached(output / f"{s}.npz") for s in ("train", "val")}
         input_contract = previous
     else:
+        if not torch.cuda.is_available():
+            raise RuntimeError("formal run requires CUDA")
         output.mkdir(parents=True, exist_ok=False)
         print(f"private formal run: {output}", flush=True)
         write_json(
@@ -206,9 +220,6 @@ def main():
     # Durable claim before touching test: interrupted evaluation cannot silently be repeated.
     claim = output / "test-started.json"
     if claim.exists():
-        if (output / "test-metrics.json").exists():
-            print("formal run already evaluated; existing test result preserved", flush=True)
-            return
         raise RuntimeError(
             "test evaluation previously started; review interruption before a new evaluation"
         )
@@ -230,17 +241,7 @@ def main():
             evaluation_count=1,
         ),
     )
-    write_json(
-        output / "summary.json",
-        dict(
-            **load_json(output / "frozen.json"),
-            test=metrics,
-            test_windows=len(test),
-            encoder_sha256=encoder_hash,
-            total_training_seconds=sum(row["seconds"] for row in history),
-            completed=True,
-        ),
-    )
+    complete_evaluation(output, history)
     print(json.dumps(dict(output=str(output), test=metrics), indent=2), flush=True)
 
 

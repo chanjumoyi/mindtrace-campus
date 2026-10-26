@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from mindtrace_ml.checkpoint import MODEL_CONFIG, environment, fingerprint
+from mindtrace_ml.data import sha256
 from mindtrace_ml.model import BiGRU, collate, mask_batch, masked_huber, target_mask
 
 
@@ -31,6 +32,90 @@ def early_stop(history, patience, min_delta=0):
         if row["validation"]["huber"] < best - min_delta:
             best, best_epoch = row["validation"]["huber"], row["epoch"]
     return best, best_epoch, bool(history and history[-1]["epoch"] - best_epoch >= patience)
+
+
+def formal_contract(input_contract, config, device):
+    return dict(
+        input=input_contract,
+        training=config,
+        model=MODEL_CONFIG,
+        environment=environment(),
+        device=device,
+    )
+
+
+def complete_evaluation(output, history):
+    """Validate frozen bindings, then repair derived files without another forward pass."""
+    output = Path(output)
+    claim = json.loads((output / "test-started.json").read_text())
+    frozen = json.loads((output / "frozen.json").read_text())
+    metrics = json.loads((output / "test-metrics.json").read_text())
+    encoder_hash = sha256(output / "encoder.pt")
+    if (
+        claim["encoder_sha256"] != encoder_hash
+        or metrics["encoder_sha256"] != encoder_hash
+        or claim["frozen_sha256"] != sha256(output / "frozen.json")
+        or metrics["evaluation_count"] != 1
+    ):
+        raise ValueError("frozen encoder/test binding incompatible; existing files preserved")
+    summary = dict(
+        **frozen,
+        test=metrics["metrics"],
+        test_windows=metrics["windows"],
+        encoder_sha256=encoder_hash,
+        total_training_seconds=sum(row["seconds"] for row in history),
+        completed=True,
+    )
+    summary_path = output / "summary.json"
+    previous = json.loads(summary_path.read_text()) if summary_path.exists() else None
+    if previous and previous.get("completed") and previous != summary:
+        raise ValueError("completed summary incompatible; existing files preserved")
+    history_path = output / "history.json"
+    if not history_path.exists() or json.loads(history_path.read_text()) != history:
+        write_json(history_path, history)
+    if previous != summary:
+        write_json(summary_path, summary)
+    return summary
+
+
+def resume_completed(output, config, input_contract, device="cuda"):
+    """Handle test-stage recovery before model construction or frozen file writes."""
+    output = Path(output)
+    claim = output / "test-started.json"
+    metrics = output / "test-metrics.json"
+    summary = output / "summary.json"
+    completed = summary.exists() and json.loads(summary.read_text()).get("completed")
+    if not (claim.exists() or metrics.exists() or completed):
+        return False
+    if not claim.exists() or not metrics.exists():
+        raise RuntimeError(
+            "test evaluation previously started; review interruption before a new evaluation"
+        )
+    expected = formal_contract(input_contract, config, device)
+    saved = torch.load(output / "last.pt", map_location="cpu", weights_only=True)
+    frozen = json.loads((output / "frozen.json").read_text())
+    if (
+        saved["contract"] != expected
+        or saved["contract_sha256"] != fingerprint(expected)
+        or frozen["contract_sha256"] != fingerprint(expected)
+    ):
+        raise ValueError("incompatible formal checkpoint; existing files preserved")
+    history = saved["history"]
+    best, best_epoch, stopped = early_stop(history, config["patience"], config["min_delta"])
+    if (
+        not history
+        or len(history) != frozen["epochs"]
+        or [row["epoch"] for row in history] != list(range(1, len(history) + 1))
+        or len(history) > config["max_epochs"]
+        or not (len(history) == config["max_epochs"] or stopped)
+        or frozen["best_epoch"] != best_epoch
+        or frozen["validation_huber"] != best
+        or frozen["early_stopped"] != stopped
+        or frozen["test_used_for_selection"] is not False
+    ):
+        raise ValueError("incomplete or incompatible frozen history; existing files preserved")
+    complete_evaluation(output, history)
+    return True
 
 
 def evaluate(model, samples, config, device, seed):
@@ -82,6 +167,8 @@ def evaluate(model, samples, config, device, seed):
 
 def train(training, validation, output, config, input_contract, device="cuda", resume=False):
     output = Path(output)
+    if (output / "test-started.json").exists() or (output / "test-metrics.json").exists():
+        raise RuntimeError("test evaluation already started; use completion recovery")
     if not training or not validation:
         raise ValueError("nonempty official train and validation required")
     if not 0 < config["mask_fraction"] < 1 or config["max_epochs"] < 1 or config["patience"] < 1:
@@ -92,13 +179,7 @@ def train(training, validation, output, config, input_contract, device="cuda", r
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
-    contract = dict(
-        input=input_contract,
-        training=config,
-        model=MODEL_CONFIG,
-        environment=environment(),
-        device=device,
-    )
+    contract = formal_contract(input_contract, config, device)
     model = BiGRU().to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"]
@@ -213,6 +294,9 @@ def train(training, validation, output, config, input_contract, device="cuda", r
             ),
             flush=True,
         )
+    # last.pt is authoritative if interruption happened before history.json.
+    # This also runs when a terminal checkpoint leaves no epochs to execute.
+    write_json(output / "history.json", history)
     best, best_epoch, stopped = early_stop(history, config["patience"], config["min_delta"])
     saved = torch.load(output / "best.pt", map_location="cpu", weights_only=True)
     model.load_state_dict(saved["model"])
