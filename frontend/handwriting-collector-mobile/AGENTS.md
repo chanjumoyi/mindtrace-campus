@@ -81,3 +81,11 @@ When any text-entry control loses focus, dismiss the simulated keyboard. If the 
 - Prefer native TouchEvent targetTouches for gesture finger counts and completion. Pointer capture loss alone does not cancel an active native touch sequence; genuine touchcancel still does. Keep the PointerEvent fallback for environments without TouchEvents.
 - Keep explicit 撤回/恢复 buttons on copy/free-writing pages for devices whose system gestures consume three-finger input. Both controls use the same stroke history and metrics as touch gestures.
 - Android identity, questionnaire and review content must remain scrollable on small/resized viewports. Tests mocking the Capacitor bridge verify API contracts only; they do not substitute for Xiaomi/HyperOS device acceptance.
+
+## Collector interaction and export decisions (2026-10-26)
+
+- The completion page shows collection/save/upload status without a WHO-5 result card, scores, interpretations or recommendations. Keep questionnaire answers, scoring and derived results in the exported/uploaded JSON.
+- Free writing must show exactly 轨迹会上传用于研究，请不要写姓名、联系方式、学校等个人信息. Raw points can reconstruct the written content; never claim that the content will not be uploaded.
+- Schema/app 1.8.0 exports attempt-level `tiltValid`, `pressureValid` and `deviceProfileId`. Tilt remains invalid until independently verified. Pressure validity temporarily mirrors dynamic pen-pressure detection, without implying physical calibration. Downstream consumers must mask invalid or absent measurements rather than learn fallback zeros as observations.
+- Export observed within-stroke pauses separately from explicit pen-up intervals and unobserved sampling intervals. Preserve legacy timing fields with their original meanings; document thresholds and limitations in `docs/06-development/collector-export-1.8.md` and exported metric definitions.
+- Device profile IDs identify configured study profiles or reported input environments, not unique physical devices. Keep each attempt linked to the session's `device.deviceProfileId`.

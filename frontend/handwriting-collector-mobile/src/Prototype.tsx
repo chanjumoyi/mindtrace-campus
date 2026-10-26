@@ -42,6 +42,8 @@ import { assessWritingPattern, type WritingPatternKind } from "./writingQuality"
 import { exportJsonPackage } from "./nativeExport";
 import { uploadSession } from "./upload";
 import { configureNativeShell } from "./nativeShell";
+import { buildDeviceProfile } from "./deviceProfile";
+import { calculateStrokeTiming, STROKE_TIMING_DEFINITION, type StrokeTiming } from "./strokeTiming";
 
 type Point = {
   seq: number; strokeId: number; phase: "down" | "move" | "up";
@@ -52,7 +54,7 @@ type Point = {
   isPrimary: boolean; pointerType: string; insideCanvas: boolean; coalesced: boolean; coalescedCount: number;
 };
 
-type AttemptMetrics = {
+type AttemptMetrics = StrokeTiming & {
   pointCount: number; movePointCount: number; strokeCount: number;
   durationMs: number; promptToFirstContactMs: number; activeDurationMs: number; pauseDurationMs: number;
   pauseCount: number; pathLengthPx: number; averageSpeedPxPerSecond: number; maximumSpeedPxPerSecond: number;
@@ -79,6 +81,7 @@ type Attempt = {
   promptShownAt: string; startedAt: string; endedAt: string;
   canvas: { width: number; height: number; devicePixelRatio: number };
   points: Point[]; strokeCount: number; pressureDetected: boolean;
+  tiltValid: boolean; pressureValid: boolean; deviceProfileId: string;
   input: { observedPointerTypes: string[]; penDetected: boolean; dynamicPressureDetected: boolean };
   interruptions: { type: string; timestamp: string; taskElapsedMs: number }[];
   metrics: AttemptMetrics; quality: QualityResult;
@@ -101,12 +104,13 @@ type StudyState = {
   answers: QuestionnaireAnswer[]; answerRecords: (AnswerRecord | null)[]; answerEvents: AnswerEvent[];
   setAnswer: (index: number, value: QuestionnaireScore, shownAt: string, responseTimeMs: number) => void;
   copyPromptAssignment: CopyPromptAssignment | null; prepareWritingPlan: () => void;
+  device: ReturnType<typeof collectDeviceContext>;
   attempts: Attempt[]; addAttempt: (attempt: Attempt) => void;
 };
 
 const StudyContext = createContext<StudyState | null>(null);
 const pressureTask: WritingTask = { id: "PRESS_CHECK", version: "1.1", title: "压力热身", prompt: "请用自然力度画三条横线", hint: "轻松书写即可，不需要刻意用力。", quality: { minStrokes: 3, minMoves: 24, minDurationMs: 500, minPathLength: 100, requirePressure: true }, copyPrompt: null };
-const freeWritingTask: WritingTask = { id: "FREE_WRITING", version: "1.1", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "建议写 20～30 个字，内容不会上传。", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false }, copyPrompt: null };
+const freeWritingTask: WritingTask = { id: "FREE_WRITING", version: "1.2", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "轨迹会上传用于研究，请不要写姓名、联系方式、学校等个人信息", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false }, copyPrompt: null };
 
 function createWritingTasks(assignment: CopyPromptAssignment): WritingTask[] {
   const copyTask = (repeatIndex: number): WritingTask => ({
@@ -140,7 +144,7 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
       maximumSpeed = Math.max(maximumSpeed, distance / delta * 1000);
     } else if (delta >= 500) pauseCount += 1;
   }
-  const durationMs = points.at(-1)?.elapsedMs ?? 0;
+  const durationMs = Math.max(0, (points.at(-1)?.elapsedMs ?? 0) - (points[0]?.elapsedMs ?? 0));
   const sortedIntervals = intervals.filter((value) => value > 0).sort((a, b) => a - b);
   const meanPressure = pressures.length ? pressures.reduce((sum, value) => sum + value, 0) / pressures.length : 0;
   const pressureVariance = pressures.length ? pressures.reduce((sum, value) => sum + (value - meanPressure) ** 2, 0) / pressures.length : 0;
@@ -179,6 +183,7 @@ function calculateMetrics(points: Point[], promptToFirstContactMs: number, strok
   const shapeMean = (selector: (shape: (typeof strokeShapes)[number]) => number) => strokeShapes.length
     ? strokeShapes.reduce((total, shape) => total + selector(shape), 0) / strokeShapes.length : 0;
   return {
+    ...calculateStrokeTiming(points),
     pointCount: points.length, movePointCount: points.filter((point) => point.phase === "move").length, strokeCount,
     durationMs: round(durationMs, 1), promptToFirstContactMs: round(promptToFirstContactMs, 1), activeDurationMs: round(activeDuration, 1),
     pauseDurationMs: round(Math.max(0, durationMs - activeDuration), 1), pauseCount, pathLengthPx: round(pathLength, 1),
@@ -354,7 +359,7 @@ function Identity({ flow }: { flow: FlowControls }) {
       <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong></div>
       <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
       <button className="change-identity" onClick={() => { study.clearParticipant(); setIdentityError(""); }}>重新选择测试类型</button>
-      <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解年龄、年级、省份、问卷和书写数据的采集用途，并同意用于研究分析与模型开发并保存在本机。</span></label>
+      <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解年龄、年级、省份、问卷和书写轨迹会保存在本机并上传服务器，用于研究分析与模型开发。轨迹可还原书写内容，请不要写姓名、联系方式、学校等个人信息。我同意上述采集与使用。</span></label>
       <button className="primary-button" disabled={!study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
     </>}
   </main></MobileScroll>;
@@ -392,6 +397,7 @@ function Questionnaire({ flow }: { flow: FlowControls }) {
 }
 
 function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (attempt: Attempt) => void }) {
+  const { device } = useStudy();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const points = useRef<Point[]>([]);
   const strokeId = useRef(0);
@@ -682,6 +688,8 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
       promptShownAt: promptShownAt.current, startedAt: startedAt.current, endedAt: new Date().toISOString(),
       canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, points: points.current,
       strokeCount: strokeId.current, pressureDetected,
+      // Raw zeros are not proof of tilt support; no tilt calibration is available.
+      tiltValid: false, pressureValid: pressureDetected, deviceProfileId: device.deviceProfileId,
       input: { observedPointerTypes: [...observedPointerTypes.current], penDetected: penSeen.current, dynamicPressureDetected: pressureDetected },
       interruptions: interruptions.current, metrics, quality });
   };
@@ -763,7 +771,7 @@ async function storePackage(payload: object) {
 
 function collectDeviceContext() {
   const extendedNavigator = navigator as Navigator & { deviceMemory?: number };
-  return {
+  const context = {
     capturedAt: new Date().toISOString(), userAgent: navigator.userAgent, language: navigator.language,
     languages: navigator.languages, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints,
     hardwareConcurrency: navigator.hardwareConcurrency, deviceMemoryGb: extendedNavigator.deviceMemory ?? null,
@@ -775,11 +783,11 @@ function collectDeviceContext() {
     inputCapabilities: { coarsePointer: window.matchMedia("(pointer: coarse)").matches,
       finePointer: window.matchMedia("(pointer: fine)").matches, hover: window.matchMedia("(hover: hover)").matches },
   };
+  return { ...context, ...buildDeviceProfile(context, import.meta.env.VITE_DEVICE_PROFILE_ID) };
 }
 
 function Review() {
   const study = useStudy();
-  const assessment = calculateQuestionnaireSummary(study.answers, study.consent);
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "failed" | "skipped">("idle");
@@ -818,7 +826,7 @@ function Review() {
     const datasetEligibility = isAdministratorTest ? "excluded_test_record"
       : questionnaireQuality.recordStatus === "usable_full" && allWritingUsable ? "eligible"
         : questionnaireQuality.recordStatus === "review_required" ? "pending_quality_review" : "partial_record";
-    const payload = { schemaVersion: "1.7.0", appVersion: "handwriting-collector-mobile/1.7.0",
+    const payload = { schemaVersion: "1.8.0", appVersion: "handwriting-collector-mobile/1.8.0",
       sessionId, participantId: study.participantId, testNumber: study.testNumber,
       testNumberLabel: formatTestNumber(study.testNumber), roundId: study.roundId, assessmentId: study.assessmentId,
       createdAt: study.sessionStartedAt, collectionCompletedAt, exportedAt,
@@ -827,7 +835,8 @@ function Review() {
       participant: { ...study.participantProfile, idComponents: { prefix: study.participantId.split("-")[0],
         grade: study.participantId.split("-")[1], suffix: study.participantId.split("-")[2] } },
       consent: { status: study.consent ? "granted" : "not_granted", accepted: study.consent, acceptedAt: study.consentAcceptedAt,
-        version: "local-anonymous-collection-v1.2", dataUseScope: ["demographics", "research", "model_development"] },
+        version: "trajectory-upload-collection-v1.3", dataUseScope: ["demographics", "research", "model_development"],
+        trajectoryUploadDisclosed: true, handwritingContentRecoverable: true },
       questionnaire: { assessmentId: study.assessmentId, testNumber: study.testNumber,
         instrumentId: QUESTIONNAIRE_ID, version: QUESTIONNAIRE_VERSION,
         source: QUESTIONNAIRE_SOURCE, responseSchemaVersion: "questionnaire-response/2.0.0", itemSetHash: QUESTIONNAIRE_ITEM_SET_HASH,
@@ -857,7 +866,11 @@ function Review() {
         usableAttempts: study.attempts.filter((attempt) => attempt.quality.status === "usable").length,
         partialAttempts: study.attempts.filter((attempt) => attempt.quality.status === "partial").length,
         invalidAttempts: study.attempts.filter((attempt) => attempt.quality.status === "invalid").length },
-      device: collectDeviceContext() };
+      metricDefinitions: { strokeTiming: STROKE_TIMING_DEFINITION,
+        pauseDurationMs: "legacy: durationMs minus activeDurationMs; includes unclassified intervals; not an in-stroke pause measure",
+        pressureValid: "heuristic: pen input with observed pressure range >= 0.01; not physical calibration",
+        tiltValid: "false until tilt capability is independently verified; raw zero must not be treated as an observed angle" },
+      device: study.device };
     const filename = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
     const json = JSON.stringify(payload, null, 2);
     try {
@@ -881,14 +894,6 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2>
-    <section className="assessment-result" aria-label="WHO-5 状态评定">
-      <h3>{assessment.resultTitle ?? "量表未完整作答，暂不评定"}</h3>
-      {assessment.rawTotal !== null && <p className="assessment-score">{assessment.percentageScore} / 100 <small>原始分 {assessment.rawTotal} / 25</small></p>}
-      <p>{assessment.recommendation}</p>
-      <p className="subcopy">评估过去两周的心理幸福感，不代表即时情绪或疾病诊断。完整作答时，原始分低于 13 或任一题为 0～1 分提示进一步评估；未触发提示也不排除心理困扰。</p>
-      <a href={QUESTIONNAIRE_SOURCE} target="_blank" rel="noreferrer">量表来源与计分：WHO-5</a>
-      <p className="subcopy">© WHO 2024 · CC BY-NC-SA 3.0 IGO。采用 WHO 提供的中文版本；本应用未获 WHO 背书。</p>
-    </section>
     <button className="primary-button" disabled={busy || uploadState === "uploading"} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
     {uploadState === "uploading" && <p className="upload-note">正在上传到服务器…</p>}
@@ -918,6 +923,7 @@ export default function Prototype() {
   const [attempts, setAttempts] = useState<Attempt[]>([]); const roundId = useMemo(makeRoundId, []);
   const assessmentId = useMemo(makeAssessmentId, []);
   const sessionStartedAt = useMemo(() => new Date().toISOString(), []);
+  const device = useMemo(collectDeviceContext, []);
   const value = useMemo<StudyState>(() => ({ participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt,
     setParticipant: (profile) => { setParticipantProfile(profile); setTestNumber(getNextTestNumber(profile.participantId)); },
     clearParticipant: () => { setParticipantProfile(null); setTestNumber(0); setConsentState(false); setConsentAcceptedAt(""); setCopyPromptAssignment(null); },
@@ -936,9 +942,9 @@ export default function Prototype() {
       setAnswers((current) => current.map((value, i) => i === index ? score : value));
       setAnswerRecords((current) => current.map((currentRecord, i) => i === index ? record : currentRecord));
       setAnswerEvents((current) => [...current, { ...record, revision, previousScore }]);
-    }, answerEvents, copyPromptAssignment,
+    }, answerEvents, copyPromptAssignment, device,
     prepareWritingPlan: () => setCopyPromptAssignment((current) => current ?? selectCopyPrompt()),
     attempts, addAttempt: (attempt) => setAttempts((current) => [...current, attempt]) }),
-  [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, copyPromptAssignment, attempts]);
+  [participantId, testNumber, participantProfile, roundId, assessmentId, sessionStartedAt, consent, consentAcceptedAt, answers, answerRecords, answerEvents, copyPromptAssignment, attempts, device]);
   return <StudyContext.Provider value={value}><FlowStack initial={welcomeScreen} /></StudyContext.Provider>;
 }

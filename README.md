@@ -62,11 +62,18 @@ mindtrace-campus/
 ├─ research/                 # 离线研究资产、数据适配器和实验（不被线上服务导入）
 ├─ docs/                     # 产品、架构、数据、API、开发和协作文档
 ├─ tests/                    # 后端、算法和前端纯逻辑测试
+├─ upload-server.ps1         # Windows 书写采集上传接收器
+├─ update-upload-server.ps1  # 上传接收器的备份、更新与健康检查
+├─ watch-mindtrace.ps1        # Windows 网页、上传服务与采集文件监控
 ├─ docker-compose.yml        # MySQL + FastAPI + Vue/Nginx
 └─ .env.example              # 不含密钥的配置模板
 ```
 
 所有队友在编码前必须阅读[项目架构与开发基线](docs/02-architecture/README.md)。产品范围见[需求清单](docs/01-product/requirements.md)，真人笔迹研究见[笔迹数据集与数位板采集规范](docs/03-data/handwriting-collection-and-dataset-spec.md)。
+
+书写采集上传服务的代码位于仓库根目录：[上传接收器](upload-server.ps1)、[更新脚本](update-upload-server.ps1)、[监控窗口](watch-mindtrace.ps1)。监控默认每 5 秒刷新服务健康、上传鉴权模式和文件统计，支持 `-Once` 单次检查；首次替换旧监控脚本后需要重新打开窗口。Windows 服务器部署和监控启动步骤见[采集器部署说明](deploy/handwriting-collector/README.md)。
+
+移动采集器完成页仅显示采集和上传状态，评分保存在 JSON 中。1.8.0 导出增加输入有效性、设备档案和分开的停顿指标，定义及旧数据缺失值处理见[采集导出格式说明](docs/06-development/collector-export-1.8.md)。
 
 ## 研究数据
 

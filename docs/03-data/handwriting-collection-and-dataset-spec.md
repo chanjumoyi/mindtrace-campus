@@ -183,6 +183,8 @@ PHQ-4 使用条件和正式版本从 [PHQ Screeners](https://www.phqscreeners.co
 
 `attempt_id`、`visit_id`、`task_code`、`task_content_id`、`instruction_version`、`attempt_no`、`started_at`、`ended_at`、`duration_ms`、`device_profile_id`、`canvas_width`、`canvas_height`、`pointer_type`、`pressure_supported`、`pressure_valid`、`interruption_count`、`retry_reason`、`quality_status`。
 
+独立移动采集器 1.8.0 使用 `deviceProfileId`、`pressureValid` 和 `tiltValid` 等 camelCase 字段，并将笔画内停顿、明确抬手间隔和缺采样时间分开导出。未经验证的环境档案不能代替本规范要求的设备实测；字段映射、缺失 mask 和操作性定义见[采集导出格式说明](../06-development/collector-export-1.8.md)。
+
 ### 5.6 `pointer_event`
 
 每个原始采样点保存：

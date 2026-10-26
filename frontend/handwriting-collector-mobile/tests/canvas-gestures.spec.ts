@@ -85,7 +85,8 @@ test("real multitouch undoes/redoes copy and free-writing without changing raw d
     }
     await screen.getByRole("button",{name:"确认本页书写"}).click();
   }
-  await expect(screen.getByRole("region",{name:"WHO-5 状态评定"})).toBeVisible();
+  await expect(screen).toHaveCount(1);
+  await expect(screen.getByRole("heading",{name:"本轮采集完成"})).toBeVisible();
   const download=page.waitForEvent("download");await screen.getByRole("button",{name:"保存并导出 JSON"}).click();await download;
   await expect.poll(()=>payload?.attempts?.length).toBe(4);
   for(const attempt of payload.attempts.slice(1)) {

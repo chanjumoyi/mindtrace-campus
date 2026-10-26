@@ -55,13 +55,6 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 16px; font-family: "STKaiti", "
 @media (max-height: 720px) { .welcome-content { padding-top: calc(var(--mobile-safe-area-height) + 30px); }.writing-screen .screen-body { padding-top: 10px; }.prompt { font-size: 19px; }.canvas-wrap { min-height: 190px; }.questionnaire { padding-top: 16px; }.questionnaire h2 { font-size: 21px; }.single-question { margin-top: 8px; padding-top: 11px; }.single-question p { min-height: 44px; margin: 4px 0 7px; font-size: 14px; }.frequency-scale { gap: 4px; }.frequency-scale button { min-height: 34px; } }
 @media (min-width: 430px) { .screen-body { padding-left: 28px; padding-right: 28px; } }
 
-.assessment-result { text-align: left; margin: 20px 0; padding: 18px; border: 1px solid #ccd4d1; border-radius: 16px; background: #f6f9f7; }
-.assessment-result h3 { margin: 0 0 12px; font-size: 19px; }
-.assessment-result p { line-height: 1.65; }
-.assessment-score { font-size: 26px; font-weight: 700; color: #314b43; }
-.assessment-score small { display: block; font-size: 13px; font-weight: 400; }
-.assessment-result a { color: #314b43; text-decoration: underline; }
-
 .writing-actions.with-history { grid-template-columns: 72px 44px 44px minmax(0, 1fr); gap: 6px; }
 .writing-actions.with-history button { font-size: 13px; padding: 0 3px; }
 .writing-actions .secondary-button:disabled { opacity: .4; cursor: default; }

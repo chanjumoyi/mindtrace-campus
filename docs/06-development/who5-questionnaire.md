@@ -16,15 +16,15 @@ World Health Organization. The World Health Organization-Five Well-Being Index (
 
 WHO 2024：原始分 <13（百分制 <50）提示幸福感偏低，建议进一步评估。边界为 12/48 与 13/52。中文原表另建议任一题为 0 或 1 时进一步评估；单独保存低分题列表，与总分阈值分开记录。总分较高但单题触发时不称为总分偏低。
 
-结果不作疾病诊断，不自行分轻中重度；未触发提示不等于没有心理困扰。跳题、未答、非法值或未同意时不生成总分与评定，不按零分插补。书写完成后展示结果，不影响独立随机分配的抄写任务。
+结果不作疾病诊断，不自行分轻中重度；未触发提示不等于没有心理困扰。跳题、未答、非法值或未同意时不生成总分与评定，不按零分插补。完成页不展示评分卡、分数、评定或建议；这些结果仅保留在导出及上传的 JSON 中，不影响独立随机分配的抄写任务。
 
 快速答题仅是采集质控：5 题有有效计时且至少 4 题少于 1 秒时人工复核；不是 WHO 规则，不改变分数。全部选相同答案不视为无效。
 
 ## 版本与兼容
 
-session schema/app 为 1.7.0，questionnaire response 为 2.0.0，instrumentId 为 WHO_5。derived 保存 rawTotal、percentageScore、belowCutoff、lowItemIds、needsFurtherAssessment、规则版本和逐题分值。旧 18 题的症状及领域派生分不再输出；旧数据必须保留原量表身份，不与 WHO-5 混合作标签。研究规范中的 PHQ/PSS 方案未更改。
+session schema/app 为 1.8.0，questionnaire response 为 2.0.0，instrumentId 为 WHO_5。derived 保存 rawTotal、percentageScore、belowCutoff、lowItemIds、needsFurtherAssessment、规则版本和逐题分值。旧 18 题的症状及领域派生分不再输出；旧数据必须保留原量表身份，不与 WHO-5 混合作标签。研究规范中的 PHQ/PSS 方案未更改。1.8.0 的输入有效性及停顿定义见 [采集导出格式说明](collector-export-1.8.md)。
 
-上传地址、令牌读取、请求头、超时、网页/原生上传、重试及管理员不上传规则保持原样。仓库没有对应接收服务源码，下游消费者可能需要按新版本适配。验证仅用合成记录和拦截请求，不上传测试资料。
+上传地址、令牌读取、请求头、超时、网页/原生上传、重试及管理员不上传规则保持原样。仓库根目录的 [upload-server.ps1](../../upload-server.ps1) 接收服务校验基础字段后保存请求原文，支持 1.8.0 新增字段，无须为此次导出结构调整接收协议；下游消费者需要识别字段有效性和版本。客户端回归验证仅用合成记录和拦截请求，不上传测试资料。
 
 ## 本次取舍
 
@@ -47,3 +47,7 @@ session schema/app 为 1.7.0，questionnaire response 为 2.0.0，instrumentId �
 新增回归用例模拟两类旧实现失败：第三个 pointerdown 未到达时错误执行撤回，以及 lostpointercapture 提前取消仍在进行的三指操作。两个用例在修改前均失败，修改后通过。当前优先按原生 TouchEvent.targetTouches 的完整列表识别手指数，由最后一个 touchend 完成手势；真实 touchcancel、拖动、长按与四指过滤仍保留。首指的临时落点不清空恢复栈，仅新的单指笔迹确认后失效。
 
 抄写/自由书写新增同一历史栈的撤回和恢复按钮，作为 Android 厂商系统手势抢占触摸时的备用操作。小米 14 Ultra 是反馈机型，但开发环境未连接该设备，未声称真机验收通过。Android 原生接口契约测试使用模拟 Capacitor bridge，覆盖两种屏幕尺寸、原生布局、数值/选择输入、完整问卷/书写、缓存 JSON 写入、分享参数、上传失败与重试；不向真实服务器提交测试资料。APK 的 versionCode 升至 2、versionName 为 1.0.1，上传配置不变。
+
+## 2026-10-26 展示与导出调整
+
+按用户要求移除完成页的 WHO-5 结果区域，包括分数、解释、建议和来源卡片；量表计分及 JSON 字段保留。自由书写明确提示轨迹会上传，并提示不要填写个人信息。schema/app 升至 1.8.0，增加输入有效性、设备档案和分开的停顿指标；Android 升至 versionCode 3、versionName 1.0.2。此轮不改变量表题目、分值、阈值或随机抄写分配。
