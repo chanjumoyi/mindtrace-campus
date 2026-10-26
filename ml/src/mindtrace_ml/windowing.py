@@ -4,11 +4,13 @@ import numpy as np
 
 from mindtrace_ml.trajectory import transform, windows
 
-VERSION = "event-windows-v2"
+VERSION = "event-windows-v3"
 
 
-def prepare(points, coordinates, rate_hz=None, max_gap_ms=200):
-    source = transform(points, coordinates)
+def prepare(points, coordinates, rate_hz=None, max_gap_ms=200, pressure_range=None):
+    source = transform(points, coordinates, pressure_range)
+    if not np.isfinite(max_gap_ms) or max_gap_ms <= 0:
+        raise ValueError("maximum gap must be positive")
     p = source["raw_points"]
     breaks = np.r_[True, (np.diff(p[:, 4]) != 0) | (np.diff(p[:, 3]) > max_gap_ms)]
     segments = np.cumsum(breaks) - 1
@@ -18,7 +20,7 @@ def prepare(points, coordinates, rate_hz=None, max_gap_ms=200):
         alpha = np.zeros(len(p))
         target_segments = segments
     else:
-        if rate_hz <= 0:
+        if not np.isfinite(rate_hz) or rate_hz <= 0:
             raise ValueError("rate must be positive")
         rows, lefts, rights, alphas, ids = [], [], [], [], []
         starts = np.flatnonzero(breaks)
@@ -50,7 +52,7 @@ def prepare(points, coordinates, rate_hz=None, max_gap_ms=200):
             rights.append(start + r)
             alphas.append(weight)
             ids.append(np.full(len(target), segment))
-        result = transform(np.concatenate(rows), coordinates)
+        result = transform(np.concatenate(rows), coordinates, source["pressure_range"])
         left, right, alpha = np.concatenate(lefts), np.concatenate(rights), np.concatenate(alphas)
         target_segments = np.concatenate(ids)
     boundary = np.r_[True, np.diff(target_segments) != 0]
@@ -72,14 +74,19 @@ def prepare(points, coordinates, rate_hz=None, max_gap_ms=200):
 
 
 def time_windows(
-    record, duration_ms=2000, stride_ms=2000, short_minimum_ms=500, minimum_down_points=2
+    record,
+    duration_ms=2000,
+    stride_ms=2000,
+    short_minimum_ms=500,
+    minimum_down_points=2,
+    max_gap_ms=200,
 ):
     if not 0 < short_minimum_ms <= duration_ms:
         raise ValueError("invalid short window policy")
     end = record["relative_ms"][-1]
     # Sampling interval is included at the final point, but never extends over a gap.
     positive = np.diff(record["relative_ms"])
-    positive = positive[(positive > 0) & (positive <= 200)]
+    positive = positive[(positive > 0) & (positive <= max_gap_ms)]
     tolerance = float(np.median(positive)) if len(positive) else 0
     for window in windows(record, duration_ms, stride_ms):
         start, _ = window["time_bounds_ms"]
@@ -94,13 +101,18 @@ def time_windows(
 
 def point_windows(record, size=256):
     """Debug only: fixed point counts must never be a formal cross-domain policy."""
+    if size <= 0:
+        raise ValueError("point window size must be positive")
     n = len(record["values"])
     for start in range(0, n, size):
         stop = min(start + size, n)
         result = {
             k: v[start:stop].copy()
+            if isinstance(v, np.ndarray) and v.ndim and len(v) == n
+            else v.copy()
+            if isinstance(v, np.ndarray)
+            else v
             for k, v in record.items()
-            if isinstance(v, np.ndarray) and len(v) == n
         }
         if np.sum(result["raw_points"][:, 4] == 1) < 2:
             continue
@@ -119,7 +131,11 @@ def point_windows(record, size=256):
 
 def preservation(source, sampled):
     """Error on original pen-down observations, never interpolating across segments."""
+    for key in ("pressure_range", "pressure_offset", "pressure_scale"):
+        if not np.array_equal(source[key], sampled[key]):
+            raise ValueError("incompatible pressure contract")
     errors, pressure_errors = [], []
+    pressure_total = 0
     for segment in np.unique(source["segment_ids"]):
         a = np.flatnonzero((source["segment_ids"] == segment) & (source["raw_points"][:, 4] == 1))
         b = np.flatnonzero(sampled["segment_ids"] == segment)
@@ -130,13 +146,23 @@ def preservation(source, sampled):
             [np.interp(target, t, sampled["normalized_xy"][b, c]) for c in range(2)]
         )
         errors.extend(np.linalg.norm(reconstructed - source["normalized_xy"][a], axis=1))
-        valid = sampled["feature_mask"][b, 3]
-        if valid.all() and source["feature_mask"][a, 3].all():
-            reconstructed_pressure = np.interp(target, t, sampled["raw_points"][b, 2]) / 4095
-            pressure_errors.extend(
-                np.abs(reconstructed_pressure - source["raw_points"][a, 2] / 4095)
-            )
+        pressure_total += int(source["feature_mask"][a, 3].sum())
+        right = np.searchsorted(t, target).clip(0, len(t) - 1)
+        left = np.maximum(right - 1, 0)
+        left[t[right] == target] = right[t[right] == target]
+        valid = (
+            source["feature_mask"][a, 3]
+            & sampled["feature_mask"][b[left], 3]
+            & sampled["feature_mask"][b[right], 3]
+        )
+        reconstructed_pressure = np.interp(target, t, sampled["values"][b, 3])
+        pressure_errors.extend(
+            np.abs(reconstructed_pressure[valid] - source["values"][a[valid], 3])
+        )
     return dict(
         position_p95=float(np.quantile(errors, 0.95)) if errors else None,
         pressure_p95=float(np.quantile(pressure_errors, 0.95)) if pressure_errors else None,
+        pressure_comparable_fraction=len(pressure_errors) / pressure_total
+        if pressure_total
+        else 0.0,
     )

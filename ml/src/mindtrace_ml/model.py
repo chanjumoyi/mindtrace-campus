@@ -44,7 +44,20 @@ class BiGRU(nn.Module):
 def collate(samples):
     if not samples or any(len(s["values"]) == 0 for s in samples):
         raise ValueError("empty batch/window")
-    lengths = torch.tensor([len(s["values"]) for s in samples])
+    lengths = []
+    for sample in samples:
+        v = torch.as_tensor(sample["values"])
+        m = torch.as_tensor(sample["feature_mask"], dtype=torch.bool)
+        pad = torch.as_tensor(sample.get("padding_mask", torch.zeros(len(v))), dtype=torch.bool)
+        if v.shape != (len(v), 5) or m.shape != v.shape or pad.shape != (len(v),):
+            raise ValueError("invalid sample shape")
+        length = int((~pad).sum())
+        if length == 0 or pad[:length].any() or not pad[length:].all():
+            raise ValueError("padding must be a nonempty prefix followed by padding")
+        if not torch.isfinite(v[:length][m[:length]]).all():
+            raise ValueError("nonfinite valid measurement")
+        lengths.append(length)
+    lengths = torch.tensor(lengths)
     n, width = len(samples), int(lengths.max())
     values = torch.zeros(n, width, 5)
     mask = torch.zeros(n, width, 5, dtype=torch.bool)
@@ -52,9 +65,10 @@ def collate(samples):
     padding = torch.arange(width).unsqueeze(0) >= lengths.unsqueeze(1)
     for i, sample in enumerate(samples):
         length = lengths[i]
-        values[i, :length] = torch.as_tensor(sample["values"], dtype=torch.float32)
-        mask[i, :length] = torch.as_tensor(sample["feature_mask"], dtype=torch.bool)
-        boundary[i, :length] = torch.as_tensor(sample["stroke_boundary"], dtype=torch.bool)
+        values[i, :length] = torch.as_tensor(sample["values"][:length], dtype=torch.float32)
+        mask[i, :length] = torch.as_tensor(sample["feature_mask"][:length], dtype=torch.bool)
+        values[i, :length].masked_fill_(~mask[i, :length], 0)
+        boundary[i, :length] = torch.as_tensor(sample["stroke_boundary"][:length], dtype=torch.bool)
     return dict(
         target=values,
         observed=values.clone(),
@@ -94,11 +108,19 @@ def mask_batch(batch, generator, fraction=0.15):
     return result
 
 
-def masked_huber(prediction, batch):
-    valid = (
+def target_mask(batch):
+    return (
         batch["augmentation_mask"][..., :4]
         & batch["feature_mask"][..., :4]
         & ~batch["padding_mask"].unsqueeze(-1)
     )
-    values = torch.nn.functional.huber_loss(prediction, batch["target"][..., :4], reduction="none")
-    return values.masked_select(valid).mean() if valid.any() else prediction.sum() * 0
+
+
+def masked_huber(prediction, batch):
+    valid = target_mask(batch)
+    selected = prediction.masked_select(valid)
+    if not selected.numel():
+        return selected.sum()
+    return torch.nn.functional.huber_loss(
+        selected, batch["target"][..., :4].masked_select(valid), reduction="mean"
+    )

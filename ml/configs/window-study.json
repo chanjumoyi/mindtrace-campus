@@ -1,11 +1,21 @@
 {
-  "version": "window-study-v1",
+  "version": "window-study-v2",
   "purpose": "engineering input selection; not a claim of optimal prediction accuracy",
   "seed": 42,
   "duration_ms": 2000,
-  "rates_hz": [null, 250, 125],
-  "strides_ms": [2000, 1000],
-  "short_minimum_ms": [2000, 500],
+  "rates_hz": [
+    null,
+    250,
+    125
+  ],
+  "strides_ms": [
+    2000,
+    1000
+  ],
+  "short_minimum_ms": [
+    2000,
+    500
+  ],
   "interpolation": "linear within continuous pen-down segment only; pen-up endpoints only",
   "maximum_interpolation_gap_ms": 200,
   "minimum_down_points": 2,
@@ -14,8 +24,13 @@
     "pressure_p95_max": 0.02,
     "minimum_down_time_coverage": 0.99,
     "aggregation": "worst writer mean of record p95 errors and record coverage",
-    "eligible_order": ["fewest points", "largest stride", "longest minimum short window"],
-    "fallback": "fail without freezing if no candidate passes"
+    "eligible_order": [
+      "fewest points",
+      "largest stride",
+      "longest minimum short window"
+    ],
+    "fallback": "fail without freezing if no candidate passes",
+    "minimum_pressure_comparable_fraction": 0.99
   },
   "smoke": {
     "train_writers": 16,
@@ -27,5 +42,6 @@
     "checkpoint_step": 4,
     "mask_fraction": 0.15,
     "learning_rate": 0.001
-  }
+  },
+  "coverage_policy": "exact union overlap with valid continuous pen-down time edges; no gap or pen-up weighting"
 }
