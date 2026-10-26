@@ -1,0 +1,81 @@
+{
+  "version": "ouhd-input-v3",
+  "source_metadata": {
+    "trajectory_version": "ouhd-trajectory-v1.1",
+    "features_version": "statistics-v1.1-pauses-200-500-1000ms",
+    "channels": [
+      "dx",
+      "dy",
+      "dt_seconds",
+      "pressure",
+      "pen_state"
+    ],
+    "window_ms": 2000,
+    "stride_ms": 2000,
+    "pressure": {
+      "range": [
+        0.0,
+        4095.0
+      ],
+      "offset": 0.0,
+      "scale": 4095.0
+    },
+    "duplicate_policy": "contiguous same-time same-state mean; transitions retained",
+    "reversed_time_policy": "quarantine, never sort",
+    "short_window_policy": "retain; no resampling or truncation",
+    "epoch_policy": "missing; source provides relative milliseconds",
+    "normalization_fit": "train only"
+  },
+  "pressure": {
+    "range": [
+      0.0,
+      4095.0
+    ],
+    "offset": 0.0,
+    "scale": 4095.0
+  },
+  "preprocessing_version": "event-windows-v3",
+  "observations": [
+    "dx",
+    "dy",
+    "dt_seconds",
+    "pressure",
+    "pen_state"
+  ],
+  "model_input": [
+    "value/dx",
+    "value/dy",
+    "value/dt_seconds",
+    "value/pressure",
+    "value/pen_state",
+    "valid/0",
+    "valid/1",
+    "valid/2",
+    "valid/3",
+    "valid/4",
+    "masked/0",
+    "masked/1",
+    "masked/2",
+    "masked/3",
+    "masked/4",
+    "stroke_boundary"
+  ],
+  "target_channels": [
+    "dx",
+    "dy",
+    "dt_seconds",
+    "pressure"
+  ],
+  "duration_ms": 2000,
+  "rate_hz": 125,
+  "stride_ms": 2000,
+  "short_minimum_ms": 500,
+  "short_policy": "retain then batch-pad; never truncate",
+  "interpolation": "linear within continuous pen-down segment only; pen-up endpoints only",
+  "maximum_interpolation_gap_ms": 200,
+  "minimum_down_points": 2,
+  "normalization": "train-only coordinates; selected-rate train-only channel moments; pen_state unchanged",
+  "selection_source": "all official validation records, writer aggregated engineering criteria",
+  "debug_256_formal_allowed": false,
+  "test_used_for_selection": false
+}

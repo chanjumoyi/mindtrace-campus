@@ -22,34 +22,34 @@ OUHD-L 使用乌尔都语，设备、采样率、坐标系和中文目标域不�
 
 当前镜像仅用于内部格式适配、质检和管线测试，不发表、不再分发；正式训练与论文结果发布前必须取得作者实验室的书面授权，并记录用途范围。版本确认前不设阈值、不做二分类；EXP-02 至多为连续分数回归/相关的内部管线测试，不能绕过正式训练授权门槛。若最终不能使用，则跳过阶段 B，以 OUHD-L 编码器和有效 MindTrace 标签开展探索性迁移，并如实记录公开监督阶段缺失。MindTrace 不足时继续数据管线和预训练，不能复制样本补人数。
 
-### 2. 目标目录（未来实现，不代表已创建）
+### 2. 已实现布局与后续规划
+
+步骤 1–3 已落地为下列布局，实际入口和复现命令以 [ml/README.md](../../../ml/README.md) 为准；后续监督训练、迁移、评价和推理模块仍按对应任务逐步实现，不将旧草案脚本编号视为现有入口。
 
 ```text
 ml/
   README.md
-  requirements.txt                 # 验证后锁定；torch 安装配置另记
-  configs/{data,pretrain,emothaw,mindtrace}.yaml
-  data/
-    raw/{ouhd_l,casia_ondo,emothaw,mindtrace,quickdraw}/
-    processed/                     # 私有派生轨迹与特征
-    splits/                        # 私有参与者划分
-  src/
-    datasets/{ouhd_l,casia,emothaw,mindtrace}.py
-    preprocessing/{quality_control,trajectory,features}.py
-    models/{bigru_encoder,reconstruction_head,prediction_head}.py
-    training/{pretrain,supervised,transfer}.py
-    evaluation/{metrics,cross_validation}.py
-    inference/{bundle,predict}.py
+  requirements.txt
+  ruff.toml                        # 继承根规则，Python 3.10
+  configs/{data,window-study,preprocessing-frozen}.json
+  data/{raw,processed,inventory,splits}/
+  src/mindtrace_ml/
+    data.py                        # 只读 manifest 与原始测量
+    trajectory.py                  # 统一轨迹、标准化与 padding
+    features.py                    # 统计特征
+    contracts.py                   # 来源/版本验收
+    windowing.py                   # 保留事件的重采样及时间/debug 窗
+    model.py                       # BiGRU 与遮盖损失
+    checkpoint.py                  # 检查点来源/配置核验
+    smoke.py                       # 训练、验证与冷恢复验收
+    runtime.py
   scripts/
     00_inventory.py
     01_prepare_data.py
-    02_extract_features.py
-    03_train_baselines.py
-    04_pretrain.py                 # 数据源参数化，默认 ouhd_l
-    05_train_emothaw.py
-    06_transfer_mindtrace.py
-    07_evaluate.py
-  tests/                           # 仅合成样例，不放参与者原始记录
+    03_select_windows.py
+    plot_window_study.py
+    verify_environment.py
+  tests/                           # 只含合成样例
   checkpoints/
   experiments/
   reports/
@@ -60,6 +60,8 @@ ml/
 ### 3. 统一数据契约与质检
 
 每个任务包含 schema_version、dataset/version、source_id/hash、匿名 participant_id、session_id、task_id、device_profile、原始尺寸/单位、五通道轨迹、逐点逐通道 feature_mask、笔画边界、quality 标记、label/instrument/version/validity。缺失字段显式标记，不把未知压力当真实零。保留原始 epoch ms 与相对 ms（源数据无 epoch 时明确缺失，不伪造），模型侧派生 dt 统一为秒；从原始 X/Y/Time 计算增量，不默认相信预计算速度和 dt。
+
+上述为完整跨数据源目标 schema。当前步骤 1–3 的 OUHD-L NPZ 与逐窗 provenance 已覆盖来源、writer/split、时间、掩码、压力契约及原始范围/插值映射；尚未完整实现任务级 `session_id`、`task_id`、`device_profile` 与原始物理尺寸字段。当前适配器没有核实这些字段的来源，按 `not_available` 理解，不能由文件名或坐标范围猜测；坐标单位是 tablet units，物理映射不可用。此处明确登记 schema 的当前覆盖范围，不声称既有 NPZ 已含完整跨设备任务元数据；后续适配时须显式序列化缺失与来源依据。
 
 OUHD-L 使用 writer_id 作为分组键，保留官方划分。保留原坐标、笔压统计与归一化参数；不同设备不能仅以各自最大观测压力除法便声称物理可比。重复时间点在派生副本中保留文件顺序并合并相同时间/相同笔状态的连续点（位置与压力取均值），发生笔状态转换的同刻事件保留但标记零 dt、速度无效；输出修复计数。时间倒序、无法解析的单位或笔状态冲突进入隔离/复核，不自动排序掩盖问题。聚合规则已由负责人确认，仍须抽样核验实现并冻结预处理版本。
 
