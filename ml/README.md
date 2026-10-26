@@ -48,10 +48,27 @@ ml/.venv/Scripts/python ml/scripts/03_select_windows.py --input-run ml/data/proc
 ml/.venv/Scripts/python ml/scripts/plot_window_study.py ml/experiments/window-study/<run_id>
 ```
 
-默认只写私有运行，且只接受与当前来源压力量程和 v1.1 元数据一致的步骤 2 运行。`--freeze` 首次生成公共冻结契约；已有契约时，版本迁移必须同时显式传入旧版本（本次为 `--freeze --replace-frozen-version ouhd-input-v2`），通过新的完整研究后才发布 v3，并在私有新 run 保存旧配置。已存在 v3 时拒绝再覆盖。正式训练尚未开始，冒烟权重不视作正式编码器。
+默认只写私有运行，且只接受与当前来源压力量程和 v1.1 元数据一致的步骤 2 运行。`--freeze` 首次生成公共冻结契约；已有契约时，版本迁移必须同时显式传入旧版本（本次为 `--freeze --replace-frozen-version ouhd-input-v2`），通过新的完整研究后才发布 v3，并在私有新 run 保存旧配置。已存在 v3 时拒绝再覆盖。这里生成的冒烟权重不视作正式编码器；正式训练入口与验收见下方步骤 4。
 
 步骤 1、2 的证据见 `docs/acceptance.md`，步骤 3 的完整规则、结果和限制见 `docs/window-selection.md`。tasks.md 中监督基线、EMOTHAW 专门适配、MindTrace 样例适配属于另外分支，未完成前不会勾选。
 
 步骤 3 的 v3 复核接入 v1.1 来源契约：重采样、保真度和 debug 窗口共享实际压力量程；已有 padding 不计入有效序列长度；无效目标在 Huber 运算前剔除，验证损失按有效遮盖目标数量汇总。候选比较还要求至少 99% 有效压力可比较，并按窗口并集与连续落笔时间边的精确重叠计算覆盖率。
 
 每个冒烟检查点包含运行/代码/清单指纹、真实窗口内容指纹、划分、环境、模型、预处理和训练配置；`checkpoint.load_checked()` 先在 CPU 校验契约，兼容后才恢复模型、优化器和随机状态。旧版或不同来源/配置会明确拒绝，原文件保持不变。每窗原始记录、范围和插值映射存于私有 `window-index.json`；`history.json` 保存训练和验证汇总，`best-smoke.pt` 是本次唯一一次验证的冒烟检查点，不代替正式预训练的多轮最佳编码器。
+
+## 步骤 4：正式 OUHD-L 自监督预训练
+
+正式入口读取已通过验收的 v3 窗口研究及其训练集标准化，不重新选窗；参数见 `configs/pretraining.json`。从仓库根运行：
+
+```powershell
+ml/.venv/Scripts/python ml/scripts/04_pretrain.py --study-run ml/experiments/window-study/20261026T053254Z-373b3ce3 --output ml/experiments/pretraining/ouhd-formal-v1 --cpu-affinity 0xffff0000
+# 进程中断后，从上一个完整 epoch 恢复；来源、代码、配置和缓存必须一致：
+ml/.venv/Scripts/python ml/scripts/04_pretrain.py --study-run ml/experiments/window-study/20261026T053254Z-373b3ce3 --output ml/experiments/pretraining/ouhd-formal-v1 --cpu-affinity 0xffff0000 --resume
+ml/.venv/Scripts/python ml/scripts/plot_pretraining.py ml/experiments/pretraining/ouhd-formal-v1
+```
+
+2 层双向 GRU（每方向 hidden=64，表示 128，dropout=0.2）重建连续片段遮盖的 dx/dy/dt/pressure。AdamW lr=0.001、weight_decay=0.01、batch=32、最多 50 epoch、连续 7 轮验证 Huber 无严格改善早停。验证遮盖固定，训练逐轮更换遮盖；仅有效且被遮盖的真实目标计入损失，空目标批次跳过，整个空目标 epoch 拒绝。支持梯度累积，梯度按实际目标总数归一化；本次保持 accumulation=1。
+
+每轮保存原子写入的 `last.pt`、最佳 `best.pt` 和 `history.json`；保存优化器、随机状态、更新游标及来源/实现/环境契约。恢复从完整 epoch 边界继续，未完成 epoch 重跑。训练完成后先导出 `encoder.pt` 和 `frozen.json`，再读独立测试测量，仅评价一次固定遮盖的总体及逐通道 Huber、MAE、RMSE（训练标准化单位）。`test-started.json` 在读取测试之前落盘；若测试评价中断，程序拒绝自动重评，需先复核中断原因。测试结果不参与选模。
+
+完整窗口及原始跨度/插值映射、划分、标准化、权重、测试指标和图均位于忽略的运行目录，不提交。重建指标仅表示轨迹表征能力，不构成 WHO-5 预测有效性的证据。正式运行验收见 `docs/pretraining.md`。

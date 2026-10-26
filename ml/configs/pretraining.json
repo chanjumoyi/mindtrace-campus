@@ -1,0 +1,1 @@
+{"version":"ouhd-pretrain-v1","seed":42,"batch_size":32,"learning_rate":0.001,"weight_decay":0.01,"max_epochs":50,"patience":7,"min_delta":0.0,"mask_fraction":0.15,"gradient_clip":1.0,"validation_seed":1042,"test_seed":2042,"gradient_accumulation":1}
