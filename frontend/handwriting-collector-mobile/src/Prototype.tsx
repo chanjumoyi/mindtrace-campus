@@ -78,6 +78,7 @@ type Attempt = {
   copyPrompt: WritingTask["copyPrompt"];
   promptShownAt: string; startedAt: string; endedAt: string;
   canvas: { width: number; height: number; devicePixelRatio: number };
+  pngDataUrl: string;
   points: Point[]; strokeCount: number; pressureDetected: boolean;
   input: { observedPointerTypes: string[]; penDetected: boolean; dynamicPressureDetected: boolean };
   interruptions: { type: string; timestamp: string; taskElapsedMs: number }[];
@@ -106,7 +107,7 @@ type StudyState = {
 
 const StudyContext = createContext<StudyState | null>(null);
 const pressureTask: WritingTask = { id: "PRESS_CHECK", version: "1.1", title: "压力热身", prompt: "请用自然力度画三条横线", hint: "轻松书写即可，不需要刻意用力。", quality: { minStrokes: 3, minMoves: 24, minDurationMs: 500, minPathLength: 100, requirePressure: true }, copyPrompt: null };
-const freeWritingTask: WritingTask = { id: "FREE_WRITING", version: "1.1", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "建议写 20～30 个字，内容不会上传。", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false }, copyPrompt: null };
+const freeWritingTask: WritingTask = { id: "FREE_WRITING", version: "1.1", title: "自由书写", prompt: "请写下此刻最想记录的一件事或一种感受", hint: "建议写 20～30 个字。", quality: { minStrokes: 15, minMoves: 150, minDurationMs: 4000, minPathLength: 400, requirePressure: false }, copyPrompt: null };
 
 function createWritingTasks(assignment: CopyPromptAssignment): WritingTask[] {
   const copyTask = (repeatIndex: number): WritingTask => ({
@@ -354,7 +355,7 @@ function Identity({ flow }: { flow: FlowControls }) {
       <div className="round-card identity-card"><span>匿名采集人 ID</span><strong>{study.participantId}</strong></div>
       <div className="round-card"><span>本次测试</span><strong>第 {study.testNumber} 次</strong><small>{formatTestNumber(study.testNumber)} · 完成保存后自动累计</small></div>
       <button className="change-identity" onClick={() => { study.clearParticipant(); setIdentityError(""); }}>重新选择测试类型</button>
-      <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我已了解年龄、年级、省份、问卷和书写数据的采集用途，并同意用于研究分析与模型开发并保存在本机。</span></label>
+      <label className="consent-row"><input type="checkbox" checked={study.consent} onChange={(event) => study.setConsent(event.target.checked)} /><span>我同意采集年龄、年级、省份、问卷、书写轨迹及书写图片，保存于本机并上传服务器，用于研究分析与模型开发。</span></label>
       <button className="primary-button" disabled={!study.consent} onClick={() => flow.push(questionnaireScreen)}>继续</button>
     </>}
   </main></MobileScroll>;
@@ -682,7 +683,7 @@ function WritingPad({ task, onComplete }: { task: WritingTask; onComplete: (atte
     if (!quality.canSubmit) { setSubmissionQuality(quality); return; }
     onComplete({ taskId: task.id, taskVersion: task.version, taskTitle: task.title, prompt: task.prompt, copyPrompt: task.copyPrompt,
       promptShownAt: promptShownAt.current, startedAt: startedAt.current, endedAt: new Date().toISOString(),
-      canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, points: points.current,
+      canvas: { width: rect.width, height: rect.height, devicePixelRatio: window.devicePixelRatio || 1 }, pngDataUrl: canvas.toDataURL("image/png"), points: points.current,
       strokeCount: strokeId.current, pressureDetected,
       input: { observedPointerTypes: [...observedPointerTypes.current], penDetected: penSeen.current, dynamicPressureDetected: pressureDetected },
       interruptions: interruptions.current, metrics, quality });
@@ -851,8 +852,9 @@ function Review() {
         quality: questionnaireQuality, linkedSessionIds: [sessionId] },
       writingPlan: { copyPromptAssignment: study.copyPromptAssignment, copyRepeatsRequired: 2,
         promptSelectionIndependentOfQuestionnaire: true, selectionScope: "universal_positive_pool" },
-      attempts: study.attempts.map((attempt, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
-        attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1 })),
+      attempts: study.attempts.map(({ pngDataUrl, ...attempt }, index) => ({ ...attempt, sessionId, testNumber: study.testNumber,
+        attemptId: `${sessionId}-${attempt.taskId}-${index + 1}`, attemptNumber: index + 1,
+        image: { filename: `${sessionId}-${attempt.taskId}-${index + 1}.png`, mimeType: "image/png", dataUrl: pngDataUrl } })),
       qualitySummary: { status: allWritingUsable ? "usable" : "partial",
         questionnaireRecordStatus: questionnaireQuality.recordStatus, questionnaireQcFlags: questionnaireQuality.qcFlags,
         datasetEligibility,

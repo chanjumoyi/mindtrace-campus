@@ -149,6 +149,11 @@ test("WHO-5 review and exported session preserve upload transport", async ({ pag
   await download;
   await expect.poll(()=>uploaded?.questionnaire?.instrumentId).toBe("WHO_5");
   expect(uploaded?.schemaVersion).toBe("1.7.0");
+  expect(uploaded?.attempts).toHaveLength(4);
+  for (const attempt of uploaded!.attempts) {
+    expect(attempt.image.filename).toBe(`${attempt.attemptId}.png`);
+    expect(attempt.image.dataUrl).toMatch(/^data:image\/png;base64,iVBORw0KGgo/);
+  }
   expect(uploaded?.questionnaire.items).toHaveLength(5);
   expect(uploaded?.questionnaire.scoring.higherDerivedScoreMeaning).toBe("better_mental_wellbeing");
   expect(uploaded?.questionnaire.derived.rawTotal).toBe(10);
