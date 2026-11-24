@@ -60,13 +60,17 @@ mindtrace-campus/
 ├─ frontend/                 # Vue 3 Web 应用与沙盘/笔迹交互资源
 ├─ backend/                  # FastAPI、MySQL 数据模型、AI 与笔迹服务
 ├─ research/                 # 离线研究资产、数据适配器和实验（不被线上服务导入）
+├─ ml/                       # 离线训练工作区；ml/emotion 为手写情绪实验
 ├─ docs/                     # 产品、架构、数据、API、开发和协作文档
 ├─ tests/                    # 后端、算法和前端纯逻辑测试
+├─ upload-server.ps1         # Windows 采集上传接收器
+├─ update-upload-server.ps1  # 接收器安全更新与健康检查
+├─ watch-mindtrace.ps1       # 采集服务监控窗口
 ├─ docker-compose.yml        # MySQL + FastAPI + Vue/Nginx
 └─ .env.example              # 不含密钥的配置模板
 ```
 
-所有队友在编码前必须阅读[项目架构与开发基线](docs/02-architecture/README.md)。产品范围见[需求清单](docs/01-product/requirements.md)，真人笔迹研究见[笔迹数据集与数位板采集规范](docs/03-data/handwriting-collection-and-dataset-spec.md)。
+所有队友在编码前必须阅读[项目架构与开发基线](docs/02-architecture/README.md)。产品范围见[需求清单](docs/01-product/requirements.md)，真人笔迹研究见[笔迹数据集与数位板采集规范](docs/03-data/handwriting-collection-and-dataset-spec.md)。采集上传接收器的部署与校验见[上传接收器说明](docs/06-development/collector-upload-server.md)，手写情绪训练准备见[ml/emotion/README.md](ml/emotion/README.md)。
 
 ## 研究数据
 

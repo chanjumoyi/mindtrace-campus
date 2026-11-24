@@ -91,6 +91,14 @@ docker compose --env-file deploy/handwriting-collector/.env \
 5. 完成采集后能导出形如 `MT-24-A6V9-T003-202610171330.json` 的文件。
 6. 服务器日志中没有参与者问卷答案、书写轨迹或导出的 JSON 内容。
 
-## 后续自动上传
+## Windows 上传接收器
 
-自动上传、服务器分配轮次和历史记录读取需要增加采集 API、数据库表、访问令牌和对象存储。当前部署包没有启用这些能力，因此服务器人员不需要配置数据库，也不会在服务器上留下参与者数据。
+采集端会自动上传到 `POST /api/handwriting-sessions`（默认 `http://82.157.132.139:8082`）。Windows 接收器、更新器和监控脚本位于仓库根目录：
+
+- [upload-server.ps1](../../upload-server.ps1)
+- [update-upload-server.ps1](../../update-upload-server.ps1)
+- [watch-mindtrace.ps1](../../watch-mindtrace.ps1)
+
+接收器按 UTF-8 原文保存完整 session JSON，兼容 schema 1.6 和 1.7（含 `attempts[].image` PNG data URL），并校验图片尺寸/base64/PNG 签名和图片上传同意。部署、错误码、同意模式和 manifest-v2 说明见[采集端上传接收器](../../docs/06-development/collector-upload-server.md)。
+
+静态 Nginx 容器本身仍不保存采集数据；上传数据保存在 Windows 服务器的 `C:\yyh_project\mindtrace-collector\uploads`，该目录不得提交到 Git。
