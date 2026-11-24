@@ -48,7 +48,21 @@ uploads/image-index.csv
 
 写入顺序是先写 PNG，再写 JSON，最后追加索引；如果 PNG 或 JSON 写入失败，会删除本次新建的 session 文件夹，避免留下半包。索引写入失败只记录日志，不删除已成功的 JSON/PNG。
 
-部署前已经上传的图片 session 仍是“JSON 内嵌 base64、没有 PNG 文件”的旧布局；它们不会自动迁移。需要时用离线脚本解码 `attempts[].image.dataUrl` 到同一 session 文件夹，并补写 `image-index.csv`，不要重复上传或改写原始 JSON。
+部署前已经上传的图片 session 仍是“JSON 内嵌 base64、没有 PNG 文件”的旧布局；它们不会自动迁移。使用仓库中的[migrate-layout.ps1](../../deploy/handwriting-collector/migrate-layout.ps1)做一次性迁移：
+
+- 先备份 `manifest.csv`、`manifest-v2.csv`、`image-index.csv` 到 `backups/migration-<时间>/`；
+- 按 `participant/date/session-stem/` 移动 JSON 和已有 PNG；
+- 把旧 JSON 里的 `attempts[].image.dataUrl` 解码为同目录 PNG；
+- 重建 `image-index.csv`，并把 manifest 的 `stored_as` 更新到新路径；
+- 脚本幂等，可以重复运行；不会改写原始 JSON。
+
+在服务器管理员 PowerShell 中执行：
+
+```powershell
+.\migrate-layout.ps1 -Root 'C:\yyh_project\mindtrace-collector'
+```
+
+迁移结果写到 `updates\migration-result.json`。
 
 ## 兼容的客户端格式
 
