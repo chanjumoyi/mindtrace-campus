@@ -1,0 +1,44 @@
+{
+  "version": "emotion-prep-v0.1",
+  "taxonomy": ["neutral", "positive", "sadness", "anxiety", "anger", "other"],
+  "label_sources": {
+    "manual": "two-person/adjudicated annotation; the only gold source",
+    "weak_mood_stress": "mood/stress quadrant; noisy auxiliary only",
+    "weak_who5": "WHO-5 low-wellbeing auxiliary target; not an emotion class",
+    "weak_journal": "user-selected journal emotion; noisy auxiliary only",
+    "pseudo": "model pseudo-label; never evaluate on it"
+  },
+  "paths": {
+    "private_input": "ml/emotion/data/raw",
+    "labels": "ml/emotion/labels/labels.csv",
+    "manifest": "ml/emotion/data/manifest.csv",
+    "runs": "ml/emotion/runs",
+    "models": "ml/emotion/models"
+  },
+  "label_columns": ["session_id", "attempt_id", "participant_id", "emotion", "label_source", "confidence", "annotator", "notes"],
+  "baseline": {
+    "cv": "group5",
+    "model": "logreg",
+    "semi_supervised_threshold": 0.9,
+    "semi_supervised_max_iter": 10
+  },
+  "sequence": {
+    "max_len": 512,
+    "batch_size": 16,
+    "learning_rate": 0.001,
+    "epochs": 60,
+    "patience": 10,
+    "freeze_encoder_epochs": 0,
+    "gradient_clip": 1.0,
+    "label_smoothing": 0.1
+  },
+  "evaluation": {
+    "primary_metric": "macro_f1",
+    "report": ["accuracy", "macro_f1", "balanced_accuracy", "per_class_recall", "confusion_matrix"],
+    "group_key": "participant_id"
+  },
+  "deployment_gate": {
+    "status": "not_approved",
+    "reason": "No participant-grouped validation, calibration, or ethics review yet; do not expose individual emotion predictions."
+  }
+}

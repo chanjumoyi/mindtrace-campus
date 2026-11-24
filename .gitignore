@@ -34,6 +34,11 @@ ml/raw/
 ml/processed/
 ml/splits/
 ml/local/
+ml/emotion/data/
+ml/emotion/models/
+ml/emotion/runs/
+ml/emotion/labels/
+ml/emotion/private/
 /pip-*/
 /tmp*/
 ml/**/*.pt

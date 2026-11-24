@@ -79,3 +79,7 @@ ml/.venv/Scripts/python ml/scripts/plot_pretraining.py ml/experiments/pretrainin
 
 
 PR #5 修复后，通过源/实现/缓存兼容性检查的恢复入口会先检查测试完成态。已完成实验保持冻结权重、声明与测试指标原样；缺失的历史从最后检查点恢复，测试指标已有但摘要未落盘时自动补齐摘要，不重复训练或测试。测试已开始但指标缺失时仍需人工复核，摘要/模型绑定不一致时拒绝改写。具体边界与回归证据见 `docs/pretraining.md` 的 PR #5 修复记录。
+
+## 手写笔迹情绪分类（独立实验区）
+
+`ml/emotion/` 是独立于上述冻结回归管线的新实验区，读取采集端 `attempts[].points` 与可选图片，提供私密清单、manifest、手工特征基线（sklearn）和 BiGRU 序列分类入口；可加载这里的 OUHD-L `encoder.pt`。标签、数据、运行和权重全部留在 git-ignored 私有目录。执行手册、模型选择、下载和 GitHub 权重策略见 [`emotion/README.md`](emotion/README.md)。情绪分类是独立研究能力，不改变本文件已冻结的 WHO-5 回归协议。

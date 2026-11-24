@@ -1,0 +1,4 @@
+# Install into the existing ml/.venv; torch and numpy are already pinned there.
+# Windows: ml/.venv/Scripts/python.exe -m pip install -r ml/emotion/requirements.txt
+pandas>=2.2,<3
+scikit-learn>=1.4,<2
