@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { ink } from "./pen-input";
 
-for(const viewport of [{width:393,height:873},{width:360,height:640}])test(`Android shell and native export/upload contract ${viewport.width}x${viewport.height}`,async({page})=>{
+for(const {viewport,admin} of [{viewport:{width:393,height:873},admin:false},{viewport:{width:360,height:640},admin:false},{viewport:{width:393,height:873},admin:true}])test(`Android shell and native export/upload contract ${viewport.width}x${viewport.height} admin=${admin}`,async({page})=>{
   test.setTimeout(60_000);
   await page.setViewportSize(viewport);
   // Contract test only: emulate the Capacitor bridge, never call the production upload server.
@@ -28,11 +28,20 @@ for(const viewport of [{width:393,height:873},{width:360,height:640}])test(`Andr
   await expect(page.getByTestId("device-picker")).toBeHidden();
   await page.getByRole("button",{name:"开始采集"}).click();
   const screen=page.locator('.flow-screen[data-flow-current="true"]');
-  await screen.getByRole("button",{name:"初次测试"}).click();
-  await screen.getByRole("spinbutton",{name:"年龄"}).fill("20");
-  await expect(page.getByTestId("keyboard-dock")).toBeHidden();
-  await screen.getByLabel("年级").selectOption("24");await screen.getByLabel("来自省份").selectOption("440000");
-  await screen.getByRole("button",{name:"生成采集编号"}).click();await screen.getByRole("checkbox").check();
+  if (admin) {
+    await screen.getByRole("button",{name:"后续测试"}).click();
+    await screen.getByRole("textbox",{name:"前两位"}).fill("AD");
+    await screen.getByLabel("年级").selectOption("24");
+    await screen.getByRole("textbox",{name:"后四位"}).fill("MAST");
+    await screen.getByRole("button",{name:"确认采集编号"}).click();
+  } else {
+    await screen.getByRole("button",{name:"初次测试"}).click();
+    await screen.getByRole("spinbutton",{name:"年龄"}).fill("20");
+    await expect(page.getByTestId("keyboard-dock")).toBeHidden();
+    await screen.getByLabel("年级").selectOption("24");await screen.getByLabel("来自省份").selectOption("440000");
+    await screen.getByRole("button",{name:"生成采集编号"}).click();
+  }
+  await screen.getByRole("checkbox").check();
   await screen.getByRole("button",{name:"继续",exact:true}).click();
   for(let i=0;i<5;i++){
     await screen.getByRole("radio",{name:"超过一半的时间 3 分"}).click();
@@ -52,6 +61,10 @@ for(const viewport of [{width:393,height:873},{width:360,height:640}])test(`Andr
   await screen.getByRole("button",{name:"重试上传"}).click();await expect(screen).toContainText("已上传到服务器");
   const calls=await page.evaluate(()=>(window as any).__nativeCalls);
   const write=calls.find((c:any)=>c.plugin==="Filesystem");const share=calls.find((c:any)=>c.plugin==="Share");
+  if (admin) {
+    expect(write.options.path).toMatch(/^MAST-test-\d{8}-001\.json$/);
+    expect(JSON.parse(write.options.data).dataClassification).toBe("administrator_test");
+  }
   expect(write.options.directory).toBe("CACHE");expect(write.options.encoding).toBe("utf8");
   expect(JSON.parse(write.options.data).questionnaire.instrumentId).toBe("WHO_5");
   expect(share.options.url).toBe(`file:///cache/${write.options.path}`);
