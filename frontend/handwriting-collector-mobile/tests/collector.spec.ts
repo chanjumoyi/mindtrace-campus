@@ -140,9 +140,9 @@ test("WHO-5 review and exported session preserve upload transport", async ({ pag
     },task);
     await screen.getByRole("button",{name:"确认本页书写"}).click();
   }
-  await expect(screen.getByRole("region",{name:"WHO-5 状态评定"})).toContainText("近期心理幸福感偏低");
+  await expect(screen.getByRole("region",{name:"WHO-5 状态评定"})).toHaveCount(0);
   await expect(screen).toHaveCount(1);
-  await expect(screen).toContainText("40 / 100");
+  await expect(screen).not.toContainText("40 / 100");
   await page.screenshot({path:"test-results/who5-review.png"});
   const download=page.waitForEvent("download");
   await screen.getByRole("button",{name:"保存并导出 JSON"}).click();

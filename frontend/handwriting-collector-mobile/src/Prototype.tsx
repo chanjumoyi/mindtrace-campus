@@ -782,7 +782,6 @@ function collectDeviceContext() {
 
 function Review() {
   const study = useStudy();
-  const assessment = calculateQuestionnaireSummary(study.answers, study.consent);
   useResetScroll();
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false); const [saveError, setSaveError] = useState("");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "failed" | "skipped">("idle");
@@ -862,15 +861,13 @@ function Review() {
         partialAttempts: study.attempts.filter((attempt) => attempt.quality.status === "partial").length,
         invalidAttempts: study.attempts.filter((attempt) => attempt.quality.status === "invalid").length },
       device: collectDeviceContext() };
-    const filename = buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
+    const filename = isAdministratorTest ? `MAST-test-${formatLocalDate(new Date(collectionCompletedAt)).replaceAll("-", "")}-${String(study.testNumber).padStart(3, "0")}.json` : buildExportFilename(study.participantId, study.testNumber, new Date(collectionCompletedAt));
     const json = JSON.stringify(payload, null, 2);
     try {
       await storePackage(payload);
       markTestCompleted(study.participantId, study.testNumber);
       setLastExport({ filename, json, sessionId });
-      if (isAdministratorTest) {
-        setUploadState("skipped"); setUploadMessage("");
-      } else if (uploadedSession !== sessionId) {
+      if (uploadedSession !== sessionId) {
         void runUpload(filename, json, sessionId);
       } else {
         setUploadState("success"); setUploadMessage("");
@@ -885,20 +882,11 @@ function Review() {
   };
   return <MobileScroll className="app-screen"><main className="screen-body review-screen">
     <div className="success-mark">✓</div><h2>本轮采集完成</h2>
-    <section className="assessment-result" aria-label="WHO-5 状态评定">
-      <h3>{assessment.resultTitle ?? "量表未完整作答，暂不评定"}</h3>
-      {assessment.rawTotal !== null && <p className="assessment-score">{assessment.percentageScore} / 100 <small>原始分 {assessment.rawTotal} / 25</small></p>}
-      <p>{assessment.recommendation}</p>
-      <p className="subcopy">评估过去两周的心理幸福感，不代表即时情绪或疾病诊断。完整作答时，原始分低于 13 或任一题为 0～1 分提示进一步评估；未触发提示也不排除心理困扰。</p>
-      <a href={QUESTIONNAIRE_SOURCE} target="_blank" rel="noreferrer">量表来源与计分：WHO-5</a>
-      <p className="subcopy">© WHO 2024 · CC BY-NC-SA 3.0 IGO。采用 WHO 提供的中文版本；本应用未获 WHO 背书。</p>
-    </section>
     <button className="primary-button" disabled={busy || uploadState === "uploading"} onClick={save}>{busy ? "正在保存…" : saved ? "再次导出 JSON" : "保存并导出 JSON"}</button>
     {saved && <p className="saved-note">已保存到本机，并生成导出文件。</p>}
     {uploadState === "uploading" && <p className="upload-note">正在上传到服务器…</p>}
     {uploadState === "success" && <p className="upload-note upload-success">已上传到服务器，可用于数据集训练。{uploadMessage && <small>服务器文件：{uploadMessage}</small>}</p>}
     {uploadState === "failed" && <><p className="upload-note upload-error" role="alert">服务器连接失败，数据已保存在本机。{uploadMessage && <small>原因：{uploadMessage}</small>}</p><button className="secondary-button" type="button" onClick={retryUpload}>重试上传</button></>}
-    {uploadState === "skipped" && <p className="upload-note">管理员测试记录仅保存在本机，不上传数据集。</p>}
     {saveError && <p className="save-error" role="alert">{saveError}</p>}
   </main></MobileScroll>;
 }
